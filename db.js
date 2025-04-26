@@ -1,30 +1,28 @@
-// backend/db.js
-const { MongoClient } = require('mongodb');
-const dotenv = require('dotenv');
-dotenv.config();
+const { MongoClient } = require("mongodb");
 
-let db = null;
+let uri;
 
-console.log(process.env.MONGO_URI);
-
-const connectDB = async () => {
-  try {
-    const client = new MongoClient(process.env.MONGO_URI);
-
-    await client.connect();
-    db = client.db('base-finder'); // ← replace with your DB name
-    console.log('✅ MongoDB connected');
-  } catch (error) {
-    console.error('❌ MongoDB connection failed:', error.message);
-    process.exit(1);
+if (process.env.ENVIRONMENT === "PRODUCTION") {
+    uri = process.env.MONGO_URI;
+  } else {
+    uri = 'mongodb://localhost:27017';
   }
-};
+// console.log(uri);
 
-const getDb = () => {
-  if (!db) {
-    throw new Error('Database not connected. Call connectDB() first.');
-  }
-  return db;
-};
+const dbName = 'base-finder'
 
-module.exports = { connectDB, getDb };
+const client = new MongoClient(uri);
+
+async function connectToDB() {
+    try {
+        await client.connect();
+        console.log("Connected to MongoDB successfully!!!");
+        const db = client.db(dbName);
+        return db;
+    } catch (err) {
+        console.error('Error connecting to MongoDB:', err);
+        throw err;
+    }
+}
+
+module.exports = { connectToDB, db: client.db(dbName)}
