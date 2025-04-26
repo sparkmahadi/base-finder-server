@@ -71,17 +71,69 @@ module.exports.postSample = async (req, res) => {
   
   // Route to delete a sample
   module.exports.deleteSample = async (req, res) => {
-    const { id } = req.params;
-  
+    console.log('hit delete sample');
     try {
-      const result = await samplesCollection.deleteOne({ _id: new MongoClient.ObjectId(id) });
+      const db = getDb();
+      const sampleId = req.params.id;
+      const userId = req.user.id; // From your protect middleware
   
-      if (result.deletedCount === 0) {
+      const sample = await db.collection('samples').findOne({ _id: new ObjectId(sampleId) });
+  
+      if (!sample) {
         return res.status(404).json({ message: 'Sample not found' });
       }
   
-      res.json({ message: 'Sample deleted' });
+      // Move to deleted_samples collection
+      await db.collection('deleted_samples').insertOne({
+        ...sample,
+        deletedBy: userId,
+        deletedAt: new Date()
+      });
+  
+      // Delete from main samples
+      await db.collection('samples').deleteOne({ _id: new ObjectId(sampleId) });
+  
+      res.status(200).json({ message: 'Sample moved to recycle bin' });
+  
     } catch (error) {
-      res.status(500).json({ message: 'Error deleting sample', error });
+      console.error('Error deleting sample:', error);
+      res.status(500).json({ message: 'Server error' });
     }
   };
+
+  module.exports.restoreSample = async (req, res) => {
+    try {
+      const deletedSampleId = req.params.id;
+  
+      const deletedSample = await db.collection('deleted_samples').findOne({ _id: new ObjectId(deletedSampleId) });
+  
+      if (!deletedSample) {
+        return res.status(404).json({ message: 'Deleted sample not found' });
+      }
+  
+      // Insert back into samples collection
+      const { _id, deletedBy, deletedAt, ...sampleData } = deletedSample;
+      await db.collection('samples').insertOne(sampleData);
+  
+      // Delete from deleted_samples collection
+      await db.collection('deleted_samples').deleteOne({ _id: new ObjectId(deletedSampleId) });
+  
+      res.status(200).json({ message: 'Sample restored successfully' });
+    } catch (error) {
+      console.error('Error restoring sample:', error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  };
+  
+module.exports.getDeletedSamples = async (req, res) => {
+    try {
+      const db = getDb();
+      const deletedSamples = await db.collection('deleted_samples').find().toArray();
+  
+      res.status(200).json({ data: deletedSamples });
+    } catch (error) {
+      console.error('Error getting deleted samples:', error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  };
+  

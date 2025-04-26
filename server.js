@@ -6,7 +6,8 @@ require('dotenv').config();
 const { connectToDB } = require('./db');
 
 
-const sampleRoutes = require('./routes/sampleRoutes');
+const sampleRoutes = require('./routes/SampleRoutes');
+const authRoutes = require('./routes/authRoutes');
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -31,7 +32,7 @@ app.get('/', (req, res) => {
 })
 
 app.use('/api/samples', sampleRoutes);
-
+app.use('/api/auth', authRoutes);
 
 // 404 handler (keep at the end)
 // app.use((req, res) => {
