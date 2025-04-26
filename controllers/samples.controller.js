@@ -4,6 +4,7 @@ const samplesCollection = db.collection("samples");
 
 // getting all the samples
 module.exports.getSamples = async (req, res) => {
+    console.log('hit getsamples');
     try {
         const samples = await samplesCollection.find().toArray();
         const medNum = samples.length; // Corrected this line to get the length of samples
@@ -24,10 +25,10 @@ module.exports.getSamples = async (req, res) => {
 
 
 module.exports.postSample = async (req, res) => {
-    const { date, category, style, noOfSample, s, d, status, comments, released } = req.body;
-  
+    const { date="", category="", style="", noOfSample="", s="", d="", status="", comments="", released="" } = req.body;
+    console.log('hit');
     try {
-      const result = await db.collection('samples').insertOne({
+      const result = await samplesCollection.insertOne({
         date,
         category,
         style,
@@ -38,7 +39,10 @@ module.exports.postSample = async (req, res) => {
         comments,
         released,
       });
-      res.json(result.ops[0]);
+      console.log(result);
+      if(result.insertedId){
+        res.send("Inserted")
+      }
     } catch (error) {
       res.status(500).json({ message: 'Error creating sample', error });
     }
@@ -50,7 +54,7 @@ module.exports.postSample = async (req, res) => {
     const { date, category, style, noOfSample, s, d, status, comments, released } = req.body;
   
     try {
-      const result = await db.collection('samples').updateOne(
+      const result = await samplesCollection.updateOne(
         { _id: new MongoClient.ObjectId(id) },
         { $set: { date, category, style, noOfSample, s, d, status, comments, released } }
       );
@@ -70,7 +74,7 @@ module.exports.postSample = async (req, res) => {
     const { id } = req.params;
   
     try {
-      const result = await db.collection('samples').deleteOne({ _id: new MongoClient.ObjectId(id) });
+      const result = await samplesCollection.deleteOne({ _id: new MongoClient.ObjectId(id) });
   
       if (result.deletedCount === 0) {
         return res.status(404).json({ message: 'Sample not found' });

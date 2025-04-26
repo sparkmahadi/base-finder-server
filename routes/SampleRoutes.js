@@ -1,6 +1,5 @@
 // backend/routes/sampleRoutes.js
 const express = require('express');
-const db = require('../db');
 const samplesController = require('../controllers/samples.controller');
 
 const router = express.Router();
