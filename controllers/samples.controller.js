@@ -8,11 +8,11 @@ const deletedSamplesCollection = db.collection("deleted_samples");
 exports.getSamples = async (req, res) => {
     console.log('GET /samples');
     try {
-        const samples = await samplesCollection.find().toArray();
+        const result = await samplesCollection.find().toArray();
         res.status(200).json({
             success: true,
-            message: `${samples.length} samples found`,
-            data: samples,
+            message: `${result.length} samples found`,
+            samples: result,
         });
     } catch (error) {
         console.error('Error fetching samples:', error);
@@ -67,16 +67,33 @@ exports.uploadSamplesFromExcel = async (req, res) => {
 exports.updateSample = async (req, res) => {
     console.log('PUT /samples/:id');
     const { id } = req.params;
-    const updateData = req.body;
+    const updateData = req.body; // Frontend sends updated data
+    
+    // Ensure only the expected fields are updated
+    const allowedFields = [
+        'date', 'category', 'style', 'no_of_sample', 'shelf', 'division', 'position', 
+        'status', 'comments', 'taken', 'purpose_of_taking', 'released'
+    ];
+
+    // Filter out any unwanted fields from the request body
+    const filteredUpdateData = Object.keys(updateData)
+        .filter(key => allowedFields.includes(key))
+        .reduce((obj, key) => {
+            obj[key] = updateData[key];
+            return obj;
+        }, {});
+
+    console.log(filteredUpdateData);  // Logging the filtered data
 
     try {
+        // Update the sample in the database
         const result = await samplesCollection.updateOne(
             { _id: new ObjectId(id) },
-            { $set: updateData }
+            { $set: filteredUpdateData }
         );
 
         if (result.modifiedCount === 0) {
-            return res.status(404).json({ success: false, message: 'Sample not found or no changes made' });
+            return res.status(200).json({ success: false, message: 'Sample not found or no changes made' });
         }
 
         res.status(200).json({ success: true, message: 'Sample updated successfully' });
@@ -85,6 +102,7 @@ exports.updateSample = async (req, res) => {
         res.status(500).json({ success: false, message: 'Server Error' });
     }
 };
+
 
 // Soft delete a sample
 exports.deleteSample = async (req, res) => {

@@ -2,12 +2,16 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
+const jwt = require("jsonwebtoken");
+
 
 const { connectToDB } = require('./db');
+const { db } = require("./db");
 
-
-
+const sampleRoutes = require('./routes/sampleRoutes')
 const authRoutes = require('./routes/authRoutes');
+const utilityRoutes = require('./routes/utilityRoutes');
+
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -24,6 +28,8 @@ connectToDB()
         console.error('Error starting server:', err);
     });
 
+    const categoriesCollection = db.collection("sample-categories");
+    const usersCollection = db.collection("users");
 
 
 // Routes
@@ -31,10 +37,143 @@ app.get('/', (req, res) => {
   res.send('Base Finder by Mahadi, Server is running')
 })
 
-app.use('/api/samples', sampleRoutes);
-app.use('/api/auth', authRoutes);
+// app.use('/api/samples', sampleRoutes);
+// app.use('/api/auth', authRoutes);
+// app.use('/api/utilities', utilityRoutes);
 
 // 404 handler (keep at the end)
 // app.use((req, res) => {
-//   res.status(404).json({ message: "Route not found" });
+//   res.json({ message: "Route not found" });
 // });
+
+
+app.post('/api/utilities/categories', async (req, res) => {
+    const { cat_id, cat_name, buyer_name, status, totalSamples } = req.body;
+  console.log(req.body);
+    if (!cat_id || !cat_name || !buyer_name || !status || totalSamples === undefined) {
+      return res.status(400).json({ message: 'Missing required fields' });
+    }
+  
+    try {
+      const newCategory = { cat_id, cat_name, buyer_name, status, totalSamples };
+      const result = await categoriesCollection.insertOne(newCategory);
+      res.send("Added sample");
+    } catch (error) {
+      res.status(500).json({ message: 'Error creating category', error });
+    }
+  });
+  
+  // **READ** - Get all categories
+  app.get('/api/utilities/categories', async (req, res) => {
+    try {
+      const categories = await categoriesCollection.find().toArray();
+      res.json(categories);
+    } catch (error) {
+      res.status(500).json({ message: 'Error fetching categories', error });
+    }
+  });
+  
+  // **READ** - Get category by cat_id
+  app.get('/api/utilities/categories/:cat_id', async (req, res) => {
+    const { cat_id } = req.params;
+    try {
+      const category = await categoriesCollection.findOne({ cat_id });
+      if (!category) {
+        return res.json({ message: 'Category not found' });
+      }
+      res.json(category);
+    } catch (error) {
+      res.status(500).json({ message: 'Error fetching category', error });
+    }
+  });
+  
+  // **UPDATE** - Update a category by cat_id
+  app.put('/api/utilities/categories/:cat_id', async (req, res) => {
+    const { cat_id } = req.params;
+    const { cat_name, buyer_name, status, totalSamples } = req.body;
+    console.log(cat_id, req.body);
+  
+    try {
+      const updatedCategory = await categoriesCollection.findOneAndUpdate(
+        { cat_id },
+        { $set: { cat_name, buyer_name, status, totalSamples } },
+        { returnDocument: 'after' }
+      );
+      if (!updatedCategory.value) {
+        return res.json({ message: 'Category not found' });
+      }
+      res.send("sample category updated");
+    } catch (error) {
+      res.status(500).json({ message: 'Error updating category', error });
+    }
+  });
+  
+  // **DELETE** - Delete a category by cat_id
+  app.delete('/api/utilities/categories/:cat_id', async (req, res) => {
+    const { cat_id } = req.params;
+  
+    try {
+      const result = await categoriesCollection.deleteOne({ cat_id });
+      if (result.deletedCount === 0) {
+        return res.json({ message: 'Category not found' });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: 'Error deleting category', error });
+    }
+  });
+
+
+
+
+// Middleware to verify the JWT token
+const verifyToken = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1]; // Extract token from 'Bearer token' format
+  console.log(token);
+
+  if (!token) {
+    return res.status(401).json({ message: 'No token provided' });
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(403).json({ message: 'Invalid or expired token' });
+    }
+
+    req.user = decoded; // Attach decoded user data to request object
+    next();
+  });
+};
+
+// API to get user info
+app.get('/api/auth/user', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id; // Assuming JWT payload has user id
+    const user222 = await usersCollection.findById(userId);
+    console.log('user22',  user222);
+    // Find user in database by user ID, excluding password field
+    const user = await usersCollection.findById(userId).select('-password');
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Send back user info excluding sensitive data
+    res.json({
+      id: user._id,
+      username: user.username,
+      email: user.email,
+      // Add other necessary fields here
+    });
+  } catch (error) {
+    console.error('Error fetching user info:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+
+
+
+
+  app.use('/api/samples', sampleRoutes);
+app.use('/api/auth', authRoutes);
