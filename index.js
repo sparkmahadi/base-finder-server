@@ -11,6 +11,7 @@ const { db } = require("./db");
 const sampleRoutes = require('./routes/sampleRoutes')
 const authRoutes = require('./routes/authRoutes');
 const utilityRoutes = require('./routes/utilityRoutes');
+const { ObjectId } = require('mongodb');
 
 
 const app = express();
@@ -129,7 +130,7 @@ app.post('/api/utilities/categories', async (req, res) => {
 // Middleware to verify the JWT token
 const verifyToken = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1]; // Extract token from 'Bearer token' format
-  console.log(token);
+  // console.log(token);
 
   if (!token) {
     return res.status(401).json({ message: 'No token provided' });
@@ -149,22 +150,15 @@ const verifyToken = (req, res, next) => {
 app.get('/api/auth/user', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id; // Assuming JWT payload has user id
-    const user222 = await usersCollection.findById(userId);
-    console.log('user22',  user222);
-    // Find user in database by user ID, excluding password field
-    const user = await usersCollection.findById(userId).select('-password');
-
+    const query = {_id: new ObjectId(userId)};
+    const user = await usersCollection.findOne(
+      query,       // Query by ObjectId
+      { projection: { password: 0 } }      // Exclude 'password' field
+    );
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
-
-    // Send back user info excluding sensitive data
-    res.json({
-      id: user._id,
-      username: user.username,
-      email: user.email,
-      // Add other necessary fields here
-    });
+    res.send(user);
   } catch (error) {
     console.error('Error fetching user info:', error);
     res.status(500).json({ message: 'Server error' });

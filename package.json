@@ -8,9 +8,9 @@
   "license": "ISC",
   "author": "mahadihasan",
   "type": "commonjs",
-  "main": "server.js",
+  "main": "index.js",
   "scripts": {
-    "start": "nodemon server.js",
+    "start": "supervisor index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {

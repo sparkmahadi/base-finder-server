@@ -103,6 +103,59 @@ exports.updateSample = async (req, res) => {
     }
 };
 
+// In routes/samples.js
+exports.takeSample = async (req, res) => {
+  try {
+    const sampleId = req.params.id;
+    const { taken_by, purpose } = req.body;
+    console.log(taken_by, purpose);
+
+    if (!taken_by || !purpose) {
+      return res.status(400).json({ success: false, message: "Missing taken_by or purpose" });
+    }
+
+    const timestamp = new Date().toISOString();
+
+    // Fetch current sample to count existing take logs
+    const sample = await samplesCollection.findOne({ _id: new ObjectId(sampleId) });
+
+    if (!sample) {
+      return res.status(404).json({ success: false, message: "Sample not found" });
+    }
+
+    // Count how many take logs already exist
+    const takenLogCount = Object.keys(sample).filter((key) => key.startsWith("taken_log_")).length;
+    const newLogField = `taken_log_${takenLogCount + 1}`;
+
+    const updateDoc = {
+      $set: {
+        last_taken_by: taken_by,
+        last_taken_at: timestamp,
+      },
+      $setOnInsert: {},
+    };
+
+    updateDoc.$set[newLogField] = `Taken by ${taken_by} at ${timestamp} for "${purpose}"`;
+
+    const result = await samplesCollection.updateOne(
+      { _id: new ObjectId(sampleId) },
+      updateDoc
+    );
+
+    res.json({
+      success: true,
+      message: "Sample taken",
+      log_field: newLogField,
+      taken_by,
+      taken_at: timestamp,
+      purpose,
+    });
+  } catch (err) {
+    console.error("Error in /take:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
 
 // Soft delete a sample
 exports.deleteSample = async (req, res) => {

@@ -19,4 +19,7 @@ router.delete('/:id', protect, samplesController.deleteSample);
 router.get('/deleted-samples', protect, samplesController.getDeletedSamples);
 router.post('/deleted-samples/restore/:id', protect, samplesController.restoreSample);
 
+// PUT /api/samples/:id/take
+router.put("/:id/take", samplesController.takeSample);
+
 module.exports = router;
