@@ -22,18 +22,18 @@ exports.getSamples = async (req, res) => {
 };
 
 exports.getTakenSamples = async (req, res) => {
-    console.log('GET /takensamples');
-    try {
-        const result = await takenSamplesCollection.find().toArray();
-        res.status(200).json({
-            success: true,
-            message: `${result.length} samples found`,
-            samples: result,
-        });
-    } catch (error) {
-        console.error('Error fetching samples:', error);
-        res.status(500).json({ success: false, message: 'Server Error' });
-    }
+  console.log('GET /takensamples');
+  try {
+    const result = await takenSamplesCollection.find().toArray();
+    res.status(200).json({
+      success: true,
+      message: `${result.length} samples found`,
+      samples: result,
+    });
+  } catch (error) {
+    console.error('Error fetching samples:', error);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
 };
 
 
@@ -139,14 +139,11 @@ exports.updateSample = async (req, res) => {
 exports.putBackSample = async (req, res) => {
   try {
     const sampleId = req.params.id;
-    const { position, returned_by } = req.body;
+    const { position, returned_by, return_purpose } = req.body;
 
-    if (!position || isNaN(position) || position < 1) {
+    const numericPosition = Number(position);
+    if (!numericPosition || numericPosition < 1) {
       return res.status(400).json({ success: false, message: "Invalid position" });
-    }
-
-    if (!returned_by || typeof returned_by !== "string") {
-      return res.status(400).json({ success: false, message: "Returned by is required." });
     }
 
     const sample = await takenSamplesCollection.findOne({ _id: new ObjectId(sampleId) });
@@ -156,28 +153,37 @@ exports.putBackSample = async (req, res) => {
 
     const { shelf, division } = sample;
 
-    // Step 1: Shift down other samples' positions
-    await samplesCollection.updateMany(
-      { shelf, division, position: { $gte: parseInt(position) } },
-      { $inc: { position: 1 } }
-    );
+    // Step 1: Find all matching samples and shift positions manually
+    const samplesToShift = await samplesCollection
+      .find({ shelf, division })
+      .toArray();
 
-    // Step 2: Prepare the return log
-    const timestamp = new Date();
-    const returnLog = {
-      returned_by,
-      returned_at: timestamp,
-    };
+    for (const s of samplesToShift) {
+      const currentPos = Number(s.position);
+      if (!isNaN(currentPos) && currentPos >= numericPosition) {
+        await samplesCollection.updateOne(
+          { _id: s._id },
+          { $set: { position: currentPos + 1 } }
+        );
+      }
+    }
 
-    // Step 3: Insert updated sample
+
+    // 🧾 Step 2: Prepare and insert back into samplesCollection
     const restoredSample = {
       ...sample,
-      position: parseInt(position),
-      last_returned_by: returned_by,
-      last_returned_at: timestamp,
-      availability: "yes",
-      returned_logs: sample.returned_logs ? [...sample.returned_logs, returnLog] : [returnLog],
+      position: numericPosition,
+      returned_at: new Date(),
+      returned_log: [
+        ...(sample.returned_log || []),
+        {
+          returned_by,
+          purpose: return_purpose,
+          returned_at: new Date()
+        }
+      ]
     };
+
     delete restoredSample._id;
 
     const insertResult = await samplesCollection.insertOne(restoredSample);
@@ -185,12 +191,12 @@ exports.putBackSample = async (req, res) => {
       return res.status(500).json({ success: false, message: "Insert failed" });
     }
 
-    // Step 4: Delete from takenSamples
+    // 🗑️ Step 3: Remove from takenSamples
     await takenSamplesCollection.deleteOne({ _id: new ObjectId(sampleId) });
 
     res.status(200).json({
       success: true,
-      message: `Sample put back at position ${position} on shelf ${shelf}/${division}`,
+      message: `Sample put back at position ${numericPosition} on shelf ${shelf}/${division}`,
     });
 
   } catch (err) {
@@ -233,7 +239,7 @@ exports.takeSample = async (req, res) => {
       ...sample,
       last_taken_by: taken_by,
       last_taken_at: timestamp,
-      availability:"no",
+      availability: "no",
       taken_logs: [...(sample.taken_logs || []), logEntry]
     };
 
@@ -252,7 +258,7 @@ exports.takeSample = async (req, res) => {
       },
       { $inc: { position: -1 } }
     );
-    if(positionUpdate.modifiedCount>0){
+    if (positionUpdate.modifiedCount > 0) {
       console.log('positions updated');
     }
 
