@@ -10,6 +10,9 @@ router.route('/')
     .get(samplesController.getSamples)
     .post(samplesController.postSample);
 
+router.route('/taken-samples')
+    .get(samplesController.getTakenSamples)
+
 router.post('/upload-excel', samplesController.uploadSamplesFromExcel);
 
 router.put('/:id', samplesController.updateSample);
@@ -21,5 +24,6 @@ router.post('/deleted-samples/restore/:id', protect, samplesController.restoreSa
 
 // PUT /api/samples/:id/take
 router.put("/:id/take", samplesController.takeSample);
+router.put("/putback/:id", samplesController.putBackSample);
 
 module.exports = router;
