@@ -1,33 +1,55 @@
 // backend/controllers/authController.js
 const jwt = require("jsonwebtoken");
-const { registerUser, loginUser } = require("../models/userModel");
+const bcrypt = require("bcrypt");
+const { loginUser } = require("../models/userModel");
+const {db} = require("../db");
 
-const JWT_SECRET = process.env.JWT_SECRET || "your_secret_key"; // put this in .env
+const JWT_SECRET = process.env.JWT_SECRET || "your_secret_key";
+
+const usersCollection = db.collection("users");
 
 // Register Controller
-async function register(req, res) {
-  const { username, password } = req.body;
+module.exports.register = async (req, res) => {
+  const { username, name, email, password } = req.body;
 
-
-  if (!username || !password) {
+  if (!username || !name || !email || !password) {
     return res.status(400).json({ message: "All fields are required" });
   }
 
   try {
-    await registerUser(username, password);
-    return res.status(201).json({ message: "User registered successfully" });
-  } catch (error) {
-    return res.status(400).json({ message: error.message });
+    const existingUser = await db.collection("users").findOne({ username });
+
+    if (existingUser) {
+      return res.json({ message: "Username already exists" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    usersCollection.insertOne({
+      username,
+      name,
+      email,
+      role:"viewer",
+      password: hashedPassword,
+      createdAt: new Date()
+    });
+
+    return res.json({ message: "User registered successfully" });
+  } catch (err) {
+    console.error("Registration error:", err);
+    return res.json({ message: "Server error" });
   }
 }
 
+
 // Login Controller
-async function login(req, res) {
-  const { username, password } = req.body;
- console.log('hit login controller');
+module.exports.login = async (req, res) => {
+  const { identifier, password } = req.body;
+  console.log("Login attempt:", identifier);
+
   try {
-    const user = await loginUser(username, password);
-    
+    const user = await loginUser(identifier, password);
+
     const token = jwt.sign(
       { id: user._id, username: user.username },
       JWT_SECRET,
@@ -38,6 +60,4 @@ async function login(req, res) {
   } catch (error) {
     return res.status(400).json({ message: error.message });
   }
-}
-
-module.exports = { register, login };
+};
