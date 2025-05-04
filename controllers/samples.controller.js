@@ -5,7 +5,7 @@ const samplesCollection = db.collection("samples");
 const takenSamplesCollection = db.collection("taken-samples");
 const deletedSamplesCollection = db.collection("deleted-samples");
 
-// Get all samples
+// Get all samples - deprecated by mahadi
 exports.getSamples = async (req, res) => {
   console.log('GET /samples');
   try {
@@ -20,6 +20,44 @@ exports.getSamples = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server Error' });
   }
 };
+
+// GET /api/samples?page=1&limit=50&search=abc&taken=true
+exports.getPaginatedSamples = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const search = req.query.search || '';
+    const taken = req.query.taken;
+    const skip = (page - 1) * limit;
+    const filter = {};
+    
+    if (search) {
+      filter.item_name = { $regex: search, $options: 'i' }; // case-insensitive search
+    }
+    
+    if (taken === 'true') filter.taken = true;
+    if (taken === 'false') filter.taken = false;
+
+    const samples = await samplesCollection
+      .find(filter)
+      .skip(skip)
+      .limit(limit)
+      .toArray();
+
+    const total = await samplesCollection.countDocuments(filter);
+
+    res.status(200).json({
+      samples,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch samples' });
+  }
+};
+
 
 exports.getTakenSamples = async (req, res) => {
   console.log('GET /takensamples');

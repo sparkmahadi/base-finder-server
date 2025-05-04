@@ -7,7 +7,8 @@ const { protect } = require('../middlewares/authMiddlewares');
 
 // Public routes
 router.route('/')
-    .get(samplesController.getSamples)
+    // .get(samplesController.getSamples) deprecated by mahadi
+    .get(samplesController.getPaginatedSamples)
     .post(samplesController.postSample);
 
 router.route('/taken-samples')
