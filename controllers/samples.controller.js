@@ -24,38 +24,71 @@ exports.getSamples = async (req, res) => {
 exports.getSampleDetails = async(req, res) =>{
   console.log('GET /sampledetails');
   const id = req.params.id;
-  console.log(id);
   const query = {_id : new ObjectId(id)};
-  try {
-    const result = await samplesCollection.findOne(query);
-    res.status(200).json({
-      success: true,
-      message: `sample details found`,
-      samples: result,
-    });
-  } catch (error) {
-    console.error('Error fetching samples:', error);
-    res.status(500).json({ success: false, message: 'Server Error' });
+  if(typeof id === "string"){
+    console.log('true');
+    try {
+      const result = await samplesCollection.findOne(query);
+      res.status(200).json({
+        success: true,
+        message: `sample details found`,
+        samples: result,
+      });console.log(result);
+    } catch (error) {
+      console.error('Error fetching samples:', error);
+      res.status(500).json({ success: false, message: 'Server Error' });
+    }
   }
+  else res.status(500).json({ success: false, message: 'Id is not a string' });
 }
 
 // GET /api/samples?page=1&limit=50&search=abc&taken=true
 exports.getPaginatedSamples = async (req, res) => {
+  console.log('get paginated samples');
+
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 50;
-    const search = req.query.search || '';
-    const availability = req.query.availability;
     const skip = (page - 1) * limit;
+
+    const search = req.query.search || '';
+
+    // Copy all other query params except page, limit, and search
+    const filterParams = { ...req.query };
+    delete filterParams.page;
+    delete filterParams.limit;
+    delete filterParams.search;
+
     const filter = {};
-    
+
+    // ✅ Search by multiple fields
     if (search) {
-      filter.item_name = { $regex: search, $options: 'i' }; // case-insensitive search
+      filter.$or = [
+        { buyer: { $regex: search, $options: 'i' } },
+        { category: { $regex: search, $options: 'i' } },
+        { style: { $regex: search, $options: 'i' } },
+        { no_of_sample: { $regex: search, $options: 'i' } },
+        { shelf: { $regex: search, $options: 'i' } },
+        { division: { $regex: search, $options: 'i' } },
+        { position: { $regex: search, $options: 'i' } },
+        { status: { $regex: search, $options: 'i' } },
+        { season: { $regex: search, $options: 'i' } },
+        { comments: { $regex: search, $options: 'i' } },
+        { added_by: { $regex: search, $options: 'i' } },
+      ];
     }
-    if(availability){
-      filter.availability = availability;
-    }
-console.log('filter', filter);
+
+ 
+
+    // ✅ Apply dynamic filters (e.g. category, availability, shelf, rack, etc.)
+    Object.entries(filterParams).forEach(([key, value]) => {
+      if (value) {
+        filter[key] = { $regex: value, $options: 'i' }; // case-insensitive
+      }
+    });
+
+    console.log('Final Filter:', filter);
+
     const samples = await samplesCollection
       .find(filter)
       .skip(skip)
@@ -63,20 +96,22 @@ console.log('filter', filter);
       .toArray();
 
     const total = await samplesCollection.countDocuments(filter);
-
+console.log('searched- ',search, "and found -",samples.length);
     res.status(200).json({
       samples,
       total,
       page,
       totalPages: Math.ceil(total / limit),
     });
+
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to fetch samples' });
   }
 };
 
-// Get taken samples separate collection - deprecated by mahadi
+
+// Get taken samples separate collection
 exports.getTakenSamples = async (req, res) => {
   console.log('GET /takensamples');
   try {
