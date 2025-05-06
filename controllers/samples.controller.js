@@ -21,23 +21,41 @@ exports.getSamples = async (req, res) => {
   }
 };
 
+exports.getSampleDetails = async(req, res) =>{
+  console.log('GET /sampledetails');
+  const id = req.params.id;
+  console.log(id);
+  const query = {_id : new ObjectId(id)};
+  try {
+    const result = await samplesCollection.findOne(query);
+    res.status(200).json({
+      success: true,
+      message: `sample details found`,
+      samples: result,
+    });
+  } catch (error) {
+    console.error('Error fetching samples:', error);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+}
+
 // GET /api/samples?page=1&limit=50&search=abc&taken=true
 exports.getPaginatedSamples = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 50;
     const search = req.query.search || '';
-    const taken = req.query.taken;
+    const availability = req.query.availability;
     const skip = (page - 1) * limit;
     const filter = {};
     
     if (search) {
       filter.item_name = { $regex: search, $options: 'i' }; // case-insensitive search
     }
-    
-    if (taken === 'true') filter.taken = true;
-    if (taken === 'false') filter.taken = false;
-
+    if(availability){
+      filter.availability = availability;
+    }
+console.log('filter', filter);
     const samples = await samplesCollection
       .find(filter)
       .skip(skip)
@@ -58,7 +76,7 @@ exports.getPaginatedSamples = async (req, res) => {
   }
 };
 
-
+// Get taken samples separate collection - deprecated by mahadi
 exports.getTakenSamples = async (req, res) => {
   console.log('GET /takensamples');
   try {
@@ -76,10 +94,6 @@ exports.getTakenSamples = async (req, res) => {
 
 
 // Add a new sample
-
-
-
-
 exports.postSample = async (req, res) => {
   console.log('POST /samples');
   try {
@@ -211,6 +225,7 @@ exports.putBackSample = async (req, res) => {
     const restoredSample = {
       ...sample,
       position: numericPosition,
+      availability: "yes",
       returned_at: new Date(),
       returned_log: [
         ...(sample.returned_log || []),

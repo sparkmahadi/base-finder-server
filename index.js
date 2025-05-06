@@ -110,19 +110,7 @@ app.post('/api/utilities/categories', async (req, res) => {
   });
   
   // **DELETE** - Delete a category by cat_id
-  app.delete('/api/utilities/categories/:cat_id', async (req, res) => {
-    const { cat_id } = req.params;
-  
-    try {
-      const result = await categoriesCollection.deleteOne({ cat_id });
-      if (result.deletedCount === 0) {
-        return res.json({ message: 'Category not found' });
-      }
-      res.status(204).send();
-    } catch (error) {
-      res.status(500).json({ message: 'Error deleting category', error });
-    }
-  });
+
 
 
 
@@ -171,3 +159,4 @@ app.get('/api/auth/user', verifyToken, async (req, res) => {
 
   app.use('/api/samples', sampleRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/utilities/categories', utilityRoutes);

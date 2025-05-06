@@ -16,6 +16,7 @@ router.route('/taken-samples')
 
 router.post('/upload-excel', samplesController.uploadSamplesFromExcel);
 
+router.get('/:id', samplesController.getSampleDetails);
 router.put('/:id', samplesController.updateSample);
 
 // Protected routes
