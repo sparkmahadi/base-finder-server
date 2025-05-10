@@ -8,8 +8,12 @@ const { protect } = require('../middlewares/authMiddlewares');
 // Public routes
 router.route('/')
     // .get(samplesController.getSamples) deprecated by mahadi
-    .get(samplesController.getPaginatedSamples)
+    .get(samplesController.getAllSamples)
     .post(samplesController.postSample);
+
+router.route('/paginated')
+    // .get(samplesController.getSamples) deprecated by mahadi
+    .get(samplesController.getPaginatedSamples)
 
 router.route('/taken-samples')
     .get(samplesController.getTakenSamples)

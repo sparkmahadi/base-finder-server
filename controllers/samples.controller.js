@@ -5,6 +5,24 @@ const samplesCollection = db.collection("samples");
 const takenSamplesCollection = db.collection("taken-samples");
 const deletedSamplesCollection = db.collection("deleted-samples");
 
+// Get all samples including taken ones - deprecated by mahadi
+exports.getAllSamples = async (req, res) => {
+  console.log('GET /samples');
+  try {
+    const result1 = await samplesCollection.find().toArray();
+    const result2 = await takenSamplesCollection.find().toArray();
+    const result = [...result1, ...result2];
+    res.status(200).json({
+      success: true,
+      message: `${result.length} samples found`,
+      samples: result,
+    });
+  } catch (error) {
+    console.error('Error fetching samples:', error);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+
 // Get all samples - deprecated by mahadi
 exports.getSamples = async (req, res) => {
   console.log('GET /samples');
@@ -21,11 +39,11 @@ exports.getSamples = async (req, res) => {
   }
 };
 
-exports.getSampleDetails = async(req, res) =>{
+exports.getSampleDetails = async (req, res) => {
   console.log('GET /sampledetails');
   const id = req.params.id;
-  const query = {_id : new ObjectId(id)};
-  if(typeof id === "string"){
+  const query = { _id: new ObjectId(id) };
+  if (typeof id === "string") {
     console.log('true');
     try {
       const result = await samplesCollection.findOne(query);
@@ -33,7 +51,7 @@ exports.getSampleDetails = async(req, res) =>{
         success: true,
         message: `sample details found`,
         samples: result,
-      });console.log(result);
+      }); console.log(result);
     } catch (error) {
       console.error('Error fetching samples:', error);
       res.status(500).json({ success: false, message: 'Server Error' });
@@ -43,6 +61,7 @@ exports.getSampleDetails = async(req, res) =>{
 }
 
 // GET /api/samples?page=1&limit=50&search=abc&taken=true
+// single collection - deprecated by mahadi
 exports.getPaginatedSamples = async (req, res) => {
   console.log('get paginated samples');
 
@@ -78,7 +97,7 @@ exports.getPaginatedSamples = async (req, res) => {
       ];
     }
 
- 
+
 
     // ✅ Apply dynamic filters (e.g. category, availability, shelf, rack, etc.)
     Object.entries(filterParams).forEach(([key, value]) => {
@@ -96,7 +115,7 @@ exports.getPaginatedSamples = async (req, res) => {
       .toArray();
 
     const total = await samplesCollection.countDocuments(filter);
-console.log('searched- ',search, "and found -",samples.length);
+    console.log('searched- ', search, "and found -", samples.length);
     res.status(200).json({
       samples,
       total,
@@ -109,6 +128,7 @@ console.log('searched- ',search, "and found -",samples.length);
     res.status(500).json({ error: 'Failed to fetch samples' });
   }
 };
+
 
 
 // Get taken samples separate collection
@@ -155,7 +175,7 @@ exports.uploadSamplesFromExcel = async (req, res) => {
     }
 
     const newSamples = samples.map((sample) => ({
-      sample_date: new Date(sample.date) || new Date(),
+      sample_date: sample.sample_date ? new Date(sample.sample_date) : null,
       buyer: sample.buyer || '',
       category: sample.category || '',
       style: sample.style || '',
@@ -171,6 +191,7 @@ exports.uploadSamplesFromExcel = async (req, res) => {
       createdAt: new Date(),
       added_at: new Date(),
     }));
+    
 
     await samplesCollection.insertMany(newSamples);
 
@@ -224,6 +245,7 @@ exports.updateSample = async (req, res) => {
 
 // Controller: putBackSample.js
 exports.putBackSample = async (req, res) => {
+  console.log('hit putback');
   try {
     const sampleId = req.params.id;
     const { position, returned_by, return_purpose } = req.body;
@@ -284,7 +306,7 @@ exports.putBackSample = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: `Sample put back at position ${numericPosition} on shelf ${shelf}/${division}`,
+      message: `Sample kept back at position ${numericPosition} on shelf ${shelf} - division ${division}`,
     });
 
   } catch (err) {
@@ -356,10 +378,10 @@ exports.takeSample = async (req, res) => {
     if (deleteResult.deletedCount === 0) {
       return res.status(500).json({ success: false, message: "Archived the sample but Failed to delete original sample" });
     }
-
+    console.log("sampleId", sampleId);
     return res.status(200).json({
       success: true,
-      message: `Sample ${sample.sampleId} moved to archive`,
+      message: `${sample.status} Sample of ${sample.style} ${sample.category}, is taken for "${purpose}"`,
       taken_by,
       taken_at: timestamp,
       purpose
@@ -377,12 +399,20 @@ exports.deleteSample = async (req, res) => {
   console.log('DELETE /samples/:id');
   const { id } = req.params;
   const userId = req.user.id;
+  console.log(userId);
+
+  // ✅ Validate ObjectId
+  if (!ObjectId.isValid(id)) {
+    return res.status(400).json({ success: false, message: 'Invalid sample ID' });
+  }
 
   try {
-    const sample = await samplesCollection.findOne({ _id: new ObjectId(id) });
+    const objectId = new ObjectId(id);
+
+    const sample = await samplesCollection.findOne({ _id: objectId });
 
     if (!sample) {
-      return res.status(404).json({ success: false, message: 'Sample not found' });
+      return res.json({ success: false, message: 'Sorry, Sample not found' });
     }
 
     await deletedSamplesCollection.insertOne({
@@ -391,14 +421,15 @@ exports.deleteSample = async (req, res) => {
       deletedAt: new Date(),
     });
 
-    await samplesCollection.deleteOne({ _id: new ObjectId(id) });
+    await samplesCollection.deleteOne({ _id: objectId });
 
-    res.status(200).json({ success: true, message: 'Sample moved to recycle bin' });
+    res.status(200).json({ success: true, message: `Sample: ${id} moved to recycle bin` });
   } catch (error) {
     console.error('Error deleting sample:', error);
     res.status(500).json({ success: false, message: 'Server Error' });
   }
 };
+
 
 // Get deleted samples
 exports.getDeletedSamples = async (req, res) => {
