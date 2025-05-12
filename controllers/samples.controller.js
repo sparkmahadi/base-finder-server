@@ -51,7 +51,7 @@ exports.getSampleDetails = async (req, res) => {
         success: true,
         message: `sample details found`,
         samples: result,
-      }); console.log(result);
+      });
     } catch (error) {
       console.error('Error fetching samples:', error);
       res.status(500).json({ success: false, message: 'Server Error' });
@@ -204,44 +204,47 @@ exports.uploadSamplesFromExcel = async (req, res) => {
 
 
 // Update an existing sample
-exports.updateSample = async (req, res) => {
-  console.log('PUT /samples/:id');
-  const { id } = req.params;
-  const updateData = req.body; // Frontend sends updated data
-
-  // Ensure only the expected fields are updated
-  const allowedFields = [
-    'date', 'category', 'style', 'no_of_sample', 'shelf', 'division', 'position',
-    'status', 'comments', 'taken', 'purpose_of_taking', 'released'
-  ];
-
-  // Filter out any unwanted fields from the request body
-  const filteredUpdateData = Object.keys(updateData)
-    .filter(key => allowedFields.includes(key))
-    .reduce((obj, key) => {
-      obj[key] = updateData[key];
-      return obj;
-    }, {});
-
-  console.log(filteredUpdateData);  // Logging the filtered data
-
+exports.updateSampleById = async (req, res) => {
   try {
-    // Update the sample in the database
-    const result = await samplesCollection.updateOne(
-      { _id: new ObjectId(id) },
-      { $set: filteredUpdateData }
-    );
+    const sampleId = req.params.id;
 
-    if (result.modifiedCount === 0) {
-      return res.status(200).json({ success: false, message: 'Sample not found or no changes made' });
+    if (!ObjectId.isValid(sampleId)) {
+      return res.status(400).json({ message: 'Invalid ID' });
     }
 
-    res.status(200).json({ success: true, message: 'Sample updated successfully' });
+    const existingSample = await samplesCollection.findOne({ _id: new ObjectId(sampleId) });
+
+    if (!existingSample) {
+      return res.status(404).json({ message: 'Sample not found' });
+    }
+
+    const updatedFields = { ...req.body };
+    delete updatedFields._id; // Don't allow _id to be updated
+
+    // Check for actual changes
+    const hasChanges = Object.keys(updatedFields).some(
+      key => JSON.stringify(existingSample[key]) !== JSON.stringify(updatedFields[key])
+    );
+
+    if (!hasChanges) {
+      return res.status(200).json({ message: 'No changes detected. Document not updated.' });
+    }
+
+    // Proceed with update
+    await samplesCollection.updateOne(
+      { _id: new ObjectId(sampleId) },
+      { $set: updatedFields }
+    );
+
+    const updatedSample = await samplesCollection.findOne({ _id: new ObjectId(sampleId) });
+
+    res.status(200).json({ success: true, message: 'Sample updated successfully', updatedSample });
   } catch (error) {
     console.error('Error updating sample:', error);
-    res.status(500).json({ success: false, message: 'Server Error' });
+    res.status(500).json({ message: 'Error updating sample', error });
   }
 };
+
 
 // Controller: putBackSample.js
 exports.putBackSample = async (req, res) => {
@@ -325,7 +328,6 @@ exports.takeSample = async (req, res) => {
   try {
     const sampleId = req.params.id;
     const { taken_by, purpose } = req.body;
-
     if (!taken_by || !purpose) {
       return res.status(400).json({ success: false, message: "Missing taken_by or purpose" });
     }
