@@ -195,7 +195,7 @@ exports.uploadSamplesFromExcel = async (req, res) => {
 
     await samplesCollection.insertMany(newSamples);
 
-    return res.status(201).json({ message: 'Samples uploaded successfully', count: newSamples.length });
+    return res.status(201).json({ success: true, message: 'Samples uploaded successfully', count: newSamples.length });
   } catch (err) {
     console.error('Error uploading samples:', err);
     return res.status(500).json({ message: 'Failed to upload samples' });
