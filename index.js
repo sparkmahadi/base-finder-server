@@ -154,7 +154,78 @@ app.get('/api/auth/user', verifyToken, async (req, res) => {
 });
 
 
+ // ** Get All Users (GET) **
+  app.get("/api/users", async (req, res) => {
+    try {
+      const users = await usersCollection.find({}).toArray();
+      res.status(200).json(users);
+    } catch (err) {
+      res.status(500).json({ message: "Error fetching users", error: err.message });
+    }
+  });
 
+  // ** Get User by ID (GET) **
+  app.get("/api/users/:id", async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
+
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      res.status(200).json(user);
+    } catch (err) {
+      res.status(500).json({ message: "Error fetching user", error: err.message });
+    }
+  });
+
+  // ** Update User (PUT) **
+  app.put("/api/users/:id", async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const { username, name, email, role, arpproval, verification } = req.body;
+
+      const updateUser = {
+        username,
+        name,
+        email,
+        role,
+        arpproval,
+        verification,
+        updatedAt: new Date(),
+      };
+
+      const result = await usersCollection.updateOne(
+        { _id: new ObjectId(userId) },
+        { $set: updateUser }
+      );
+
+      if (result.modifiedCount === 0) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      res.status(200).json({ message: "User updated successfully" });
+    } catch (err) {
+      res.status(500).json({ message: "Error updating user", error: err.message });
+    }
+  });
+
+  // ** Delete User (DELETE) **
+  app.delete("/api/users/:id", async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const result = await usersCollection.deleteOne({ _id: new ObjectId(userId) });
+
+      if (result.deletedCount === 0) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      res.status(200).json({ message: "User deleted successfully" });
+    } catch (err) {
+      res.status(500).json({ message: "Error deleting user", error: err.message });
+    }
+  });
 
 
   app.use('/api/samples', sampleRoutes);
