@@ -31,6 +31,7 @@ connectToDB()
 
     const categoriesCollection = db.collection("sample-categories");
     const usersCollection = db.collection("users");
+    const samplesCollection = db.collection("samples");
 
 
 // Routes
@@ -49,20 +50,45 @@ app.get('/', (req, res) => {
 
 
 app.post('/api/utilities/categories', async (req, res) => {
-    const { cat_id, cat_name, buyer_name, status, totalSamples } = req.body;
-  console.log(req.body);
-    if (!cat_id || !cat_name || !buyer_name || !status || totalSamples === undefined) {
-      return res.status(400).json({ message: 'Missing required fields' });
+  const { cat_name, buyer_name, status, totalSamples } = req.body;
+
+  if (!cat_name || !buyer_name || !status || totalSamples === undefined) {
+    return res.status(400).json({ success: false, message: 'Missing required fields' });
+  }
+
+  try {
+    // Check for existing category with same cat_name and buyer_name
+    const existingCategory = await categoriesCollection.findOne({
+      cat_name: cat_name.trim(),
+      buyer_name: buyer_name.trim(),
+    });
+
+    if (existingCategory) {
+      return res.send({
+        success: false,
+        redirect: true,
+        message: 'A category with the same name and buyer already exists',
+      });
     }
-  
-    try {
-      const newCategory = { cat_id, cat_name, buyer_name, status, totalSamples };
-      const result = await categoriesCollection.insertOne(newCategory);
-      res.send("Added sample");
-    } catch (error) {
-      res.status(500).json({ message: 'Error creating category', error });
+
+    // If no duplicate, insert new category
+    const newCategory = { cat_name, buyer_name, status, totalSamples };
+    const result = await categoriesCollection.insertOne(newCategory);
+
+    if (result.acknowledged) {
+      return res.status(201).json({
+        success: true,
+        message: 'Added Sample Category Successfully!!!',
+      });
+    } else {
+      return res.status(500).json({ success: false, message: 'Insertion failed' });
     }
-  });
+  } catch (error) {
+    console.error('Error creating category:', error);
+    return res.status(500).json({ success: false, message: 'Server error', error });
+  }
+});
+
   
   // **READ** - Get all categories
   app.get('/api/utilities/categories', async (req, res) => {
@@ -110,6 +136,82 @@ app.post('/api/utilities/categories', async (req, res) => {
   });
   
   // **DELETE** - Delete a category by cat_id
+
+
+  // GET unique category + buyer pairs with totalSamples from samplesCollection
+app.get('/api/utilities/unique-category-buyers', async (req, res) => {
+  console.log('hit get unique category');
+  try {
+    const uniquePairs = await samplesCollection.aggregate([
+      {
+        $group: {
+          _id: { category: "$category", buyer: "$buyer" },
+          totalSamples: { $sum: "$no_of_sample" }
+        }
+      },
+      {
+        $project: {
+          cat_name: "$_id.category",
+          buyer_name: "$_id.buyer",
+          totalSamples: 1 // <- This includes the summed value
+        }
+      }
+    ]).toArray();
+
+    console.log(uniquePairs);
+
+    if (uniquePairs.length) {
+      res.send({ success: true, categories: uniquePairs });
+    } else {
+      res.send({ message: "No unique pairs found", success: false });
+    }
+  } catch (error) {
+    console.error("Error fetching unique category-buyer pairs:", error);
+    res.status(500).json({ success: false, message: 'Failed to fetch unique category-buyer pairs', error });
+  }
+});
+
+app.post('/api/utilities/categories/bulk', async (req, res) => {
+  const { categories } = req.body;
+  if (!Array.isArray(categories) || categories.length === 0) {
+    return res.status(400).json({ success: false, message: 'No categories provided' });
+  }
+
+  try {
+    const queries = categories.map(({ cat_name, buyer_name }) => ({
+      cat_name,
+      buyer_name
+    }));
+
+    // Check existing entries
+    const existing = await categoriesCollection
+      .find({ $or: queries })
+      .toArray();
+
+    if (existing.length > 0) {
+      return res.status(409).json({
+        redirect: true,
+        message: 'Some categories already exist in DB',
+        existing
+      });
+    }
+
+    // Add new entries
+    const formatted = categories.map(({ cat_name, buyer_name, totalSamples }) => ({
+      cat_name,
+      buyer_name,
+      totalSamples,
+      status: "Pending", // or req.body.status if needed
+    }));
+
+    const result = await categoriesCollection.insertMany(formatted);
+    res.json({ success: true, insertedCount: result.insertedCount });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Error uploading categories', error });
+  }
+});
 
 
 
