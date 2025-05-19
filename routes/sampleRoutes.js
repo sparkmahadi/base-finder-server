@@ -18,6 +18,14 @@ router.route('/paginated')
 router.route('/taken-samples')
     .get(samplesController.getTakenSamples)
 
+router.route('/buyers')
+    .get(samplesController.getBuyers)
+
+//     GET /api/samples/unique?fields=category
+// GET /api/samples/unique?fields=category,buyer
+router.route('/unique')
+    .get(samplesController.getUniqueFieldValues)
+
 router.post('/upload-excel', samplesController.uploadSamplesFromExcel);
 
 router.get('/:id', samplesController.getSampleDetails);

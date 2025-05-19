@@ -158,7 +158,7 @@ app.get('/api/utilities/unique-category-buyers', async (req, res) => {
       }
     ]).toArray();
 
-    console.log(uniquePairs);
+    // console.log(uniquePairs);
 
     if (uniquePairs.length) {
       res.send({ success: true, categories: uniquePairs });

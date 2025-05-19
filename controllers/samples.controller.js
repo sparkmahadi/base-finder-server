@@ -2,6 +2,7 @@ const { db } = require("../db");
 const { ObjectId } = require("mongodb");
 
 const samplesCollection = db.collection("samples");
+const buyersCollection = db.collection("buyers");
 const takenSamplesCollection = db.collection("taken-samples");
 const deletedSamplesCollection = db.collection("deleted-samples");
 
@@ -39,6 +40,23 @@ exports.getSamples = async (req, res) => {
   }
 };
 
+
+// Get all samples - deprecated by mahadi
+exports.getBuyers = async (req, res) => {
+  console.log('GET /samples');
+  try {
+    const result = await buyersCollection.find().toArray();
+    res.status(200).json({
+      success: true,
+      message: `${result.length} buyers found`,
+      buyers: result,
+    });
+  } catch (error) {
+    console.error('Error fetching buyers:', error);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+
 exports.getSampleDetails = async (req, res) => {
   console.log('GET /sampledetails');
   const id = req.params.id;
@@ -47,14 +65,27 @@ exports.getSampleDetails = async (req, res) => {
     console.log('true');
     try {
       const result = await samplesCollection.findOne(query);
-      res.status(200).json({
-        success: true,
-        message: `sample details found`,
-        samples: result,
-      });
-    } catch (error) {
+      console.log(query);
+      if (result) {
+        res.status(200).json({
+          success: true,
+          message: `sample details found`,
+          sample: result,
+        });
+      } else if (!result) {
+        const result2 = await takenSamplesCollection.findOne(query);
+        if (result2) {
+          res.status(200).json({
+            success: true,
+            message: `sample details found`,
+            sample: result2,
+          });
+        }
+      } else { res.json({ success: false, message: 'Sample not found' }); }
+    }
+    catch (error) {
       console.error('Error fetching samples:', error);
-      res.status(500).json({ success: false, message: 'Server Error' });
+      res.json({ success: false, message: 'Server Error' });
     }
   }
   else res.status(500).json({ success: false, message: 'Id is not a string' });
@@ -191,7 +222,7 @@ exports.uploadSamplesFromExcel = async (req, res) => {
       createdAt: new Date(),
       added_at: new Date(),
     }));
-    
+
 
     await samplesCollection.insertMany(newSamples);
 
@@ -205,21 +236,32 @@ exports.uploadSamplesFromExcel = async (req, res) => {
 
 // Update an existing sample
 exports.updateSampleById = async (req, res) => {
+  console.log('hit updatesample');
   try {
     const sampleId = req.params.id;
+    const updatedData = req.body;
 
     if (!ObjectId.isValid(sampleId)) {
       return res.status(400).json({ message: 'Invalid ID' });
     }
 
-    const existingSample = await samplesCollection.findOne({ _id: new ObjectId(sampleId) });
+    const objectId = new ObjectId(sampleId);
+    let targetCollection = null;
+    let existingSample = await samplesCollection.findOne({ _id: objectId });
 
-    if (!existingSample) {
-      return res.status(404).json({ message: 'Sample not found' });
+    if (existingSample) {
+      targetCollection = samplesCollection;
+    } else {
+      existingSample = await takenSamplesCollection.findOne({ _id: objectId });
+      if (existingSample) {
+        targetCollection = takenSamplesCollection;
+      } else {
+        return res.json({ success: false, message: 'Sample not found in either collection' });
+      }
     }
 
-    const updatedFields = { ...req.body };
-    delete updatedFields._id; // Don't allow _id to be updated
+    const updatedFields = { ...updatedData };
+    delete updatedFields._id; // Prevent _id from being updated
 
     // Check for actual changes
     const hasChanges = Object.keys(updatedFields).some(
@@ -231,14 +273,21 @@ exports.updateSampleById = async (req, res) => {
     }
 
     // Proceed with update
-    await samplesCollection.updateOne(
-      { _id: new ObjectId(sampleId) },
+    const updateResult = await targetCollection.updateOne(
+      { _id: objectId },
       { $set: updatedFields }
     );
+    if (updateResult.modifiedCount > 0) {
+      const updatedSample = await targetCollection.findOne({ _id: objectId });
+      res.status(200).json({
+        success: true,
+        message: 'Sample updated successfully',
+        updatedSample,
+      });
+    } else{
+      res.json({success:false, message: "Failed to modify sample"})
+    }
 
-    const updatedSample = await samplesCollection.findOne({ _id: new ObjectId(sampleId) });
-
-    res.status(200).json({ success: true, message: 'Sample updated successfully', updatedSample });
   } catch (error) {
     console.error('Error updating sample:', error);
     res.status(500).json({ message: 'Error updating sample', error });
@@ -466,5 +515,58 @@ exports.restoreSample = async (req, res) => {
   } catch (error) {
     console.error('Error restoring sample:', error);
     res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+
+// GET /api/samples/unique?fields=category
+// Returns unique values of one field.
+
+// GET /api/samples/unique?fields=category,buyer
+// Returns unique combinations of multiple fields.
+
+exports.getUniqueFieldValues = async (req, res) => {
+  console.log('hit unique fvalues');
+  const { fields } = req.query;
+
+  if (!fields) {
+    return res.status(400).json({ success: false, message: "fields query parameter is required" });
+  }
+
+  const fieldArray = fields.split(",").map(f => f.trim());
+
+  try {
+    if (fieldArray.length === 1) {
+      // Single field: use distinct
+      const values = await samplesCollection.distinct(fieldArray[0]);
+      return res.status(200).json({ success: true, field: fieldArray[0], values });
+    } else {
+      // Multiple fields: use aggregation
+      const pipeline = [
+        {
+          $group: {
+            _id: fieldArray.reduce((acc, field) => {
+              acc[field] = `$${field}`;
+              return acc;
+            }, {}),
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            ...fieldArray.reduce((acc, field) => {
+              acc[field] = `$_id.${field}`;
+              return acc;
+            }, {}),
+          },
+        },
+      ];
+
+      const values = await samplesCollection.aggregate(pipeline).toArray();
+
+      return res.status(200).json({ success: true, fields: fieldArray, combinations: values });
+    }
+  } catch (err) {
+    console.error("Error:", err);
+    res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
