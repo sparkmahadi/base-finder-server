@@ -183,6 +183,27 @@ exports.getTakenSamples = async (req, res) => {
 exports.postSample = async (req, res) => {
   console.log('POST /samples');
   try {
+    const { position, shelf, division } = req.body;
+
+    const numericPosition = Number(position);
+    if (!numericPosition || numericPosition < 1) {
+      return res.status(400).json({ success: false, message: "Invalid position" });
+    }
+
+    // Step 1: Find all matching samples and shift positions manually
+    const samplesToShift = await samplesCollection
+      .find({ shelf, division })
+      .toArray();
+
+    for (const s of samplesToShift) {
+      const currentPos = Number(s.position);
+      if (!isNaN(currentPos) && currentPos >= numericPosition) {
+        await samplesCollection.updateOne(
+          { _id: s._id },
+          { $set: { position: currentPos + 1 } }
+        );
+      }
+    }
     const newSample = req.body;
     const result = await samplesCollection.insertOne(newSample);
 
@@ -284,8 +305,8 @@ exports.updateSampleById = async (req, res) => {
         message: 'Sample updated successfully',
         updatedSample,
       });
-    } else{
-      res.json({success:false, message: "Failed to modify sample"})
+    } else {
+      res.json({ success: false, message: "Failed to modify sample" })
     }
 
   } catch (error) {

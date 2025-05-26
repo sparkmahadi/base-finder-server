@@ -11,6 +11,7 @@ const { db } = require("./db");
 const sampleRoutes = require('./routes/sampleRoutes')
 const authRoutes = require('./routes/authRoutes');
 const utilityRoutes = require('./routes/utilityRoutes');
+const userRoutes = require('./routes/userRoutes');
 const { ObjectId } = require('mongodb');
 
 
@@ -18,20 +19,20 @@ const app = express();
 const port = process.env.PORT || 5000;
 
 app.use(cors());
-app.use(express.json({ limit: '10mb' })); 
+app.use(express.json({ limit: '10mb' }));
 
 // Connect to MongoDB
 connectToDB()
-    .then(() => {
-        app.listen(port, () => { console.log(`Base Finder server is running on port ${port}`); })
-    })
-    .catch((err) => {
-        console.error('Error starting server:', err);
-    });
+  .then(() => {
+    app.listen(port, () => { console.log(`Base Finder server is running on port ${port}`); })
+  })
+  .catch((err) => {
+    console.error('Error starting server:', err);
+  });
 
-    const categoriesCollection = db.collection("sample-categories");
-    const usersCollection = db.collection("users");
-    const samplesCollection = db.collection("samples");
+const categoriesCollection = db.collection("sample-categories");
+const usersCollection = db.collection("users");
+const samplesCollection = db.collection("samples");
 
 
 // Routes
@@ -89,56 +90,56 @@ app.post('/api/utilities/categories', async (req, res) => {
   }
 });
 
-  
-  // **READ** - Get all categories
-  app.get('/api/utilities/categories', async (req, res) => {
-    try {
-      const categories = await categoriesCollection.find().toArray();
-      res.json(categories);
-    } catch (error) {
-      res.status(500).json({ message: 'Error fetching categories', error });
+
+// **READ** - Get all categories
+app.get('/api/utilities/categories', async (req, res) => {
+  try {
+    const categories = await categoriesCollection.find().toArray();
+    res.json(categories);
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching categories', error });
+  }
+});
+
+// **READ** - Get category by cat_id
+app.get('/api/utilities/categories/:cat_id', async (req, res) => {
+  const { cat_id } = req.params;
+  try {
+    const category = await categoriesCollection.findOne({ cat_id });
+    if (!category) {
+      return res.json({ message: 'Category not found' });
     }
-  });
-  
-  // **READ** - Get category by cat_id
-  app.get('/api/utilities/categories/:cat_id', async (req, res) => {
-    const { cat_id } = req.params;
-    try {
-      const category = await categoriesCollection.findOne({ cat_id });
-      if (!category) {
-        return res.json({ message: 'Category not found' });
-      }
-      res.json(category);
-    } catch (error) {
-      res.status(500).json({ message: 'Error fetching category', error });
+    res.json(category);
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching category', error });
+  }
+});
+
+// **UPDATE** - Update a category by cat_id
+app.put('/api/utilities/categories/:cat_id', async (req, res) => {
+  const { cat_id } = req.params;
+  const { cat_name, buyer_name, status, totalSamples } = req.body;
+  console.log(cat_id, req.body);
+
+  try {
+    const updatedCategory = await categoriesCollection.findOneAndUpdate(
+      { cat_id },
+      { $set: { cat_name, buyer_name, status, totalSamples } },
+      { returnDocument: 'after' }
+    );
+    if (!updatedCategory.value) {
+      return res.json({ message: 'Category not found' });
     }
-  });
-  
-  // **UPDATE** - Update a category by cat_id
-  app.put('/api/utilities/categories/:cat_id', async (req, res) => {
-    const { cat_id } = req.params;
-    const { cat_name, buyer_name, status, totalSamples } = req.body;
-    console.log(cat_id, req.body);
-  
-    try {
-      const updatedCategory = await categoriesCollection.findOneAndUpdate(
-        { cat_id },
-        { $set: { cat_name, buyer_name, status, totalSamples } },
-        { returnDocument: 'after' }
-      );
-      if (!updatedCategory.value) {
-        return res.json({ message: 'Category not found' });
-      }
-      res.send("sample category updated");
-    } catch (error) {
-      res.status(500).json({ message: 'Error updating category', error });
-    }
-  });
-  
-  // **DELETE** - Delete a category by cat_id
+    res.send("sample category updated");
+  } catch (error) {
+    res.status(500).json({ message: 'Error updating category', error });
+  }
+});
+
+// **DELETE** - Delete a category by cat_id
 
 
-  // GET unique category + buyer pairs with totalSamples from samplesCollection
+// GET unique category + buyer pairs with totalSamples from samplesCollection
 app.get('/api/utilities/unique-category-buyers', async (req, res) => {
   console.log('hit get unique category');
   try {
@@ -240,7 +241,7 @@ const verifyToken = (req, res, next) => {
 app.get('/api/auth/user', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id; // Assuming JWT payload has user id
-    const query = {_id: new ObjectId(userId)};
+    const query = { _id: new ObjectId(userId) };
     const user = await usersCollection.findOne(
       query,       // Query by ObjectId
       { projection: { password: 0 } }      // Exclude 'password' field
@@ -255,81 +256,37 @@ app.get('/api/auth/user', verifyToken, async (req, res) => {
   }
 });
 
+// GET samples by shelf and division
+app.get('/api/samples-by-location', async (req, res) => {
+  const { shelf, division } = req.query; // Get shelf and division from query parameters
+  console.log(shelf, division);
+  if (!shelf || !division) {
+    return res.status(400).json({ success: false, message: 'Shelf and Division are required query parameters.' });
+  }
 
- // ** Get All Users (GET) **
-  app.get("/api/users", async (req, res) => {
-    try {
-      const users = await usersCollection.find({}).toArray();
-      res.status(200).json(users);
-    } catch (err) {
-      res.status(500).json({ message: "Error fetching users", error: err.message });
+  try {
+    // Convert to number for proper querying if they are stored as numbers
+    const queryShelf = parseInt(shelf);
+    const queryDivision = parseInt(division);
+
+    if (isNaN(queryShelf) || isNaN(queryDivision)) {
+      return res.status(400).json({ success: false, message: 'Shelf and Division must be valid numbers.' });
     }
-  });
 
-  // ** Get User by ID (GET) **
-  app.get("/api/users/:id", async (req, res) => {
-    try {
-      const userId = req.params.id;
-      const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
+    const samples = await samplesCollection.find({
+      shelf: queryShelf,
+      division: queryDivision
+    }).toArray(); // Convert cursor to array
 
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      res.status(200).json(user);
-    } catch (err) {
-      res.status(500).json({ message: "Error fetching user", error: err.message });
-    }
-  });
-
-  // ** Update User (PUT) **
-  app.put("/api/users/:id", async (req, res) => {
-    try {
-      const userId = req.params.id;
-      const { username, name, email, role, arpproval, verification } = req.body;
-
-      const updateUser = {
-        username,
-        name,
-        email,
-        role,
-        arpproval,
-        verification,
-        updatedAt: new Date(),
-      };
-
-      const result = await usersCollection.updateOne(
-        { _id: new ObjectId(userId) },
-        { $set: updateUser }
-      );
-
-      if (result.modifiedCount === 0) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      res.status(200).json({ message: "User updated successfully" });
-    } catch (err) {
-      res.status(500).json({ message: "Error updating user", error: err.message });
-    }
-  });
-
-  // ** Delete User (DELETE) **
-  app.delete("/api/users/:id", async (req, res) => {
-    try {
-      const userId = req.params.id;
-      const result = await usersCollection.deleteOne({ _id: new ObjectId(userId) });
-
-      if (result.deletedCount === 0) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      res.status(200).json({ message: "User deleted successfully" });
-    } catch (err) {
-      res.status(500).json({ message: "Error deleting user", error: err.message });
-    }
-  });
+    res.status(200).json({ success: true, samples: samples });
+  } catch (error) {
+    console.error('Error fetching samples by location:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch samples by location.' });
+  }
+});
 
 
-  app.use('/api/samples', sampleRoutes);
+app.use('/api/samples', sampleRoutes);
 app.use('/api/auth', authRoutes);
-app.use('/api/utilities/categories', utilityRoutes);
+app.use('/api/utilities', utilityRoutes);
+app.use('/api/users', userRoutes); // Mount user routes

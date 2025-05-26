@@ -29,7 +29,9 @@ module.exports.register = async (req, res) => {
       username,
       name,
       email,
-      role:"viewer",
+      role:"user",
+      verification: false,
+      approval: false,
       password: hashedPassword,
       createdAt: new Date()
     });
