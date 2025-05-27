@@ -50,47 +50,6 @@ app.get('/', (req, res) => {
 // });
 
 
-app.post('/api/utilities/categories', async (req, res) => {
-  const { cat_name, buyer_name, status, totalSamples } = req.body;
-
-  if (!cat_name || !buyer_name || !status || totalSamples === undefined) {
-    return res.status(400).json({ success: false, message: 'Missing required fields' });
-  }
-
-  try {
-    // Check for existing category with same cat_name and buyer_name
-    const existingCategory = await categoriesCollection.findOne({
-      cat_name: cat_name.trim(),
-      buyer_name: buyer_name.trim(),
-    });
-
-    if (existingCategory) {
-      return res.send({
-        success: false,
-        redirect: true,
-        message: 'A category with the same name and buyer already exists',
-      });
-    }
-
-    // If no duplicate, insert new category
-    const newCategory = { cat_name, buyer_name, status, totalSamples };
-    const result = await categoriesCollection.insertOne(newCategory);
-
-    if (result.acknowledged) {
-      return res.status(201).json({
-        success: true,
-        message: 'Added Sample Category Successfully!!!',
-      });
-    } else {
-      return res.status(500).json({ success: false, message: 'Insertion failed' });
-    }
-  } catch (error) {
-    console.error('Error creating category:', error);
-    return res.status(500).json({ success: false, message: 'Server error', error });
-  }
-});
-
-
 // **READ** - Get all categories
 app.get('/api/utilities/categories', async (req, res) => {
   try {
