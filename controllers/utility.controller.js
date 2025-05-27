@@ -315,6 +315,7 @@ module.exports.getStatuses = async (req, res) => {
 
 // Controller to get all Shelves
 module.exports.getShelves = async (req, res) => {
+  console.log('hit getshelves');
   try {
     const shelves = await utilitiesCollection.find({ utility_type: 'shelf' }).toArray();
     if (shelves.length > 0) {
@@ -355,6 +356,142 @@ module.exports.getDivisions = async (req, res) => {
     }
   } catch (error) {
     console.error('Error fetching divisions:', error);
+    return res.status(500).json({ success: false, message: 'Server error', error: error.message });
+  }
+};
+
+
+
+// Controller to update an existing Category
+module.exports.putCategory = async (req, res) => {
+  const { _id, cat_name, status, totalSamples, createdBy } = req.body;
+
+  if (!_id || !cat_name || !status || totalSamples === undefined || !createdBy) {
+    return res.status(400).json({ success: false, message: 'Missing required fields for update' });
+  }
+
+  try {
+    const objectId = new ObjectId(_id); // Convert string ID to ObjectId
+
+    const result = await sampleCategoriesCollection.updateOne(
+      { _id: objectId },
+      {
+        $set: {
+          cat_name: cat_name.trim(),
+          status: status.trim(),
+          totalSamples: Number(totalSamples),
+          createdBy: createdBy.trim(),
+          updatedAt: new Date() // Add an updatedAt timestamp
+        }
+      }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ success: false, message: 'Category not found' });
+    }
+    if (result.modifiedCount === 0) {
+      return res.status(200).json({ success: true, message: 'No changes detected for category' });
+    }
+
+    return res.status(200).json({ success: true, message: 'Category updated successfully!' });
+  } catch (error) {
+    console.error('Error updating category:', error);
+    if (error.name === 'BSONError') { // Catch invalid ObjectId format
+      return res.status(400).json({ success: false, message: 'Invalid Category ID format' });
+    }
+    return res.status(500).json({ success: false, message: 'Server error', error: error.message });
+  }
+};
+
+// Controller to update an existing Utility (Buyer, Status, Shelf, Division)
+module.exports.updateUtility = async (req, res) => {
+  const { _id, utility_type, value, createdBy } = req.body;
+
+  if (!_id || !utility_type || !value || !createdBy) {
+    return res.status(400).json({ success: false, message: 'Missing required fields for update' });
+  }
+
+  try {
+    const objectId = new ObjectId(_id); // Convert string ID to ObjectId
+
+    const result = await utilitiesCollection.updateOne(
+      { _id: objectId, utility_type: utility_type.trim() }, // Ensure type matches too
+      {
+        $set: {
+          value: value.trim(),
+          createdBy: createdBy.trim(),
+          updatedAt: new Date() // Add an updatedAt timestamp
+        }
+      }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ success: false, message: `${utility_type} not found or type mismatch` });
+    }
+    if (result.modifiedCount === 0) {
+      return res.status(200).json({ success: true, message: `No changes detected for ${utility_type}` });
+    }
+
+    return res.status(200).json({ success: true, message: `${utility_type} updated successfully!` });
+  } catch (error) {
+    console.error('Error updating utility:', error);
+    if (error.name === 'BSONError') { // Catch invalid ObjectId format
+      return res.status(400).json({ success: false, message: 'Invalid Utility ID format' });
+    }
+    return res.status(500).json({ success: false, message: 'Server error', error: error.message });
+  }
+};
+
+// --- DELETE Controllers ---
+
+// Controller to delete an existing Category
+module.exports.deleteCategory = async (req, res) => {
+  const { id } = req.params; // Expect ID in URL params
+
+  if (!id) {
+    return res.status(400).json({ success: false, message: 'Category ID is required for deletion' });
+  }
+
+  try {
+    const objectId = new ObjectId(id); // Convert string ID to ObjectId
+    const result = await sampleCategoriesCollection.deleteOne({ _id: objectId });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ success: false, message: 'Category not found' });
+    }
+
+    return res.status(200).json({ success: true, message: 'Category deleted successfully!' });
+  } catch (error) {
+    console.error('Error deleting category:', error);
+    if (error.name === 'BSONError') {
+      return res.status(400).json({ success: false, message: 'Invalid Category ID format' });
+    }
+    return res.status(500).json({ success: false, message: 'Server error', error: error.message });
+  }
+};
+
+// Controller to delete an existing Utility (Buyer, Status, Shelf, Division)
+module.exports.deleteUtility = async (req, res) => {
+  const { id, type } = req.params; // Expect ID and type in URL params
+
+  if (!id || !type) {
+    return res.status(400).json({ success: false, message: 'Utility ID and type are required for deletion' });
+  }
+
+  try {
+    const objectId = new ObjectId(id); // Convert string ID to ObjectId
+    const result = await utilitiesCollection.deleteOne({ _id: objectId, utility_type: type.trim() });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ success: false, message: `${type} not found or type mismatch` });
+    }
+
+    return res.status(200).json({ success: true, message: `${type} deleted successfully!` });
+  } catch (error) {
+    console.error('Error deleting utility:', error);
+    if (error.name === 'BSONError') {
+      return res.status(400).json({ success: false, message: 'Invalid Utility ID format' });
+    }
     return res.status(500).json({ success: false, message: 'Server error', error: error.message });
   }
 };

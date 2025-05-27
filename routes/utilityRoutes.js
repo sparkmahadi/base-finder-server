@@ -5,7 +5,7 @@ const utilityController = require('../controllers/utility.controller');
 
 // Public routes
 router.route('/categories').get(samplesController.getSamples)
-.post(utilityController.postCategory);
+    .post(utilityController.postCategory);
 
 router.route("/buyers").post(utilityController.postBuyer);
 router.route("/statuses").post(utilityController.postStatus);
@@ -16,6 +16,14 @@ router.get('/buyers', utilityController.getBuyers);
 router.get('/statuses', utilityController.getStatuses);
 router.get('/shelfs', utilityController.getShelves);
 router.get('/divisions', utilityController.getDivisions);
+
+// UPDATE routes
+router.put('/categories', utilityController.updateUtility); // PUT request to update by ID in body
+router.put('/utilities', utilityController.updateUtility);   // PUT request to update by ID in body
+
+// DELETE routes
+router.delete('/categories/:id', utilityController.deleteCategory); // DELETE request with ID in URL param
+router.delete('/utilities/:type/:id', utilityController.deleteUtility); // DELETE request with type and ID in URL params
 
 router.route("/categories/:id").delete(utilityController.deleteCategory);
 
