@@ -40,6 +40,23 @@ exports.getSamples = async (req, res) => {
   }
 };
 
+exports.getSamplesByShelfAndDivision = async (req, res) => {
+  console.log('GET /samples by shelf and division');
+  const { shelf, division } = req.query;
+  const query = { shelf: parseInt(shelf), division: parseInt(division) };
+  try {
+    const result = await samplesCollection.find(query).toArray();
+    res.status(200).json({
+      success: true,
+      message: `${result.length} samples found`,
+      samples: result,
+    });
+  } catch (error) {
+    console.error('Error fetching samples:', error);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+
 
 // Get all samples - deprecated by mahadi
 exports.getBuyers = async (req, res) => {
@@ -65,7 +82,6 @@ exports.getSampleDetails = async (req, res) => {
   if (typeof id === "string") {
     try {
       const result = await samplesCollection.findOne(query);
-      console.log(result);
       if (result) {
         return res.status(200).json({
           success: true,
@@ -74,7 +90,6 @@ exports.getSampleDetails = async (req, res) => {
         });
       } else if (!result) {
         const result2 = await takenSamplesCollection.findOne(query);
-        console.log(result2);
         if (result2) {
           res.status(200).json({
             success: true,
@@ -793,3 +808,197 @@ exports.getUniqueFieldValues = async (req, res) => {
     res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
+
+
+exports.increasePositionsByShelfAndDivision = async (req, res) => {
+  let { shelf, division, currentPosition } = req.body;
+
+  // Convert inputs to numbers
+  shelf = Number(shelf);
+  division = Number(division);
+  currentPosition = Number(currentPosition);
+
+  console.log('Decrease positions for Shelf:', shelf, 'Division:', division, 'Above position:', currentPosition);
+
+  if (isNaN(shelf) || isNaN(division) || isNaN(currentPosition)) {
+    return res.status(400).json({ message: 'Invalid input types. All must be numbers.' });
+  }
+
+  try {
+    // Step 1: Normalize DB fields to ensure numeric values
+    const cursor = samplesCollection.find({
+      $or: [
+        { shelf: { $type: "string" } },
+        { division: { $type: "string" } },
+        { position: { $type: "string" } }
+      ]
+    });
+
+    for await (const doc of cursor) {
+      const numericShelf = parseInt(doc.shelf);
+      const numericDivision = parseInt(doc.division);
+      const numericPosition = parseInt(doc.position);
+
+      const update = {};
+      if (!isNaN(numericShelf)) update.shelf = numericShelf;
+      if (!isNaN(numericDivision)) update.division = numericDivision;
+      if (!isNaN(numericPosition)) update.position = numericPosition;
+
+      if (Object.keys(update).length > 0) {
+        await samplesCollection.updateOne({ _id: doc._id }, { $set: update });
+      }
+    }
+
+    // Step 2: Perform the actual position update
+    const query = {
+      shelf: shelf,
+      division: division,
+      position: { $gt: currentPosition }
+    };
+
+    const preview = await samplesCollection.find(query).toArray();
+    console.log(`Found ${preview.length} document(s) to update.`);
+
+    const result = await samplesCollection.updateMany(query, {
+      $inc: { position: 1 }
+    });
+
+    if (result.modifiedCount > 0) {
+      return res.json({
+        message: 'Positions decreased successfully',
+        modifiedCount: result.modifiedCount
+      });
+    } else {
+      return res.json({
+        message: 'No positions were updated — no matching documents'
+      });
+    }
+
+  } catch (err) {
+    console.error('Error while decreasing positions:', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
+exports.decreasePositionsByShelfAndDivision = async (req, res) => {
+  let { shelf, division, currentPosition } = req.body;
+
+  // Convert inputs to numbers
+  shelf = Number(shelf);
+  division = Number(division);
+  currentPosition = Number(currentPosition);
+
+  console.log('Decrease positions for Shelf:', shelf, 'Division:', division, 'Above position:', currentPosition);
+
+  if (isNaN(shelf) || isNaN(division) || isNaN(currentPosition)) {
+    return res.status(400).json({ message: 'Invalid input types. All must be numbers.' });
+  }
+
+  try {
+    // Step 1: Normalize DB fields to ensure numeric values
+    const cursor = samplesCollection.find({
+      $or: [
+        { shelf: { $type: "string" } },
+        { division: { $type: "string" } },
+        { position: { $type: "string" } }
+      ]
+    });
+
+    for await (const doc of cursor) {
+      const numericShelf = parseInt(doc.shelf);
+      const numericDivision = parseInt(doc.division);
+      const numericPosition = parseInt(doc.position);
+
+      const update = {};
+      if (!isNaN(numericShelf)) update.shelf = numericShelf;
+      if (!isNaN(numericDivision)) update.division = numericDivision;
+      if (!isNaN(numericPosition)) update.position = numericPosition;
+
+      if (Object.keys(update).length > 0) {
+        await samplesCollection.updateOne({ _id: doc._id }, { $set: update });
+      }
+    }
+
+    // Step 2: Perform the actual position update
+    const query = {
+      shelf: shelf,
+      division: division,
+      position: { $gt: currentPosition }
+    };
+
+    const preview = await samplesCollection.find(query).toArray();
+    console.log(`Found ${preview.length} document(s) to update.`);
+
+    const result = await samplesCollection.updateMany(query, {
+      $inc: { position: -1 }
+    });
+
+    if (result.modifiedCount > 0) {
+      return res.json({
+        message: 'Positions decreased successfully',
+        modifiedCount: result.modifiedCount
+      });
+    } else {
+      return res.json({
+        message: 'No positions were updated — no matching documents'
+      });
+    }
+
+  } catch (err) {
+    console.error('Error while decreasing positions:', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+const normalizeFieldsToNumbers = require('../utils/nomalizeFieldsToNumbers');
+
+// app.patch('/normalize-positions',
+exports.normalizePositions = async (req, res) => {
+  let { shelf, division } = req.body;
+console.log('hit normalize positions');
+  // Convert inputs to numbers
+  shelf = parseInt(shelf);
+  division = parseInt(division);
+
+  if (isNaN(shelf) || isNaN(division)) {
+    return res.status(400).json({ message: 'Invalid input types. Shelf and division must be numbers.' });
+  }
+
+  try {
+    // ✅ Step 1: Normalize all shelf, division, and position fields to numbers
+    const updatedCount = await normalizeFieldsToNumbers(samplesCollection);
+
+    // ✅ Step 2: Fetch normalized and sorted documents for given shelf & division
+    const docs = await samplesCollection.find({ shelf, division })
+      .sort({ position: 1, _id: 1 })
+      .toArray();
+
+    // ✅ Step 3: Prepare bulk renumbering updates
+    const bulkOps = docs.map((doc, index) => ({
+      updateOne: {
+        filter: { _id: doc._id },
+        update: { $set: { position: index + 1 } }
+      }
+    }));
+
+    if (bulkOps.length > 0) {
+      const result = await samplesCollection.bulkWrite(bulkOps);
+      res.json({
+        success: true,
+        message: 'Positions normalized successfully',
+        normalizedFieldsUpdated: updatedCount?.updatedCount,
+        positionsRenumbered: result.modifiedCount
+      });
+    } else {
+      res.json({
+        message: 'No matching documents found to normalize',
+        normalizedFieldsUpdated: updatedCount?.updatedCount
+      });
+    }
+
+  } catch (err) {
+    console.error('Normalize Error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+

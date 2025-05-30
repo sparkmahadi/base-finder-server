@@ -26,6 +26,9 @@ router.route('/buyers')
 router.route('/unique')
     .get(samplesController.getUniqueFieldValues)
 
+router.route('/get-by-shelf-and-division')
+    .get(samplesController.getSamplesByShelfAndDivision)
+
 router.post('/upload-excel', samplesController.uploadSamplesFromExcel);
 
 router.get('/:id', samplesController.getSampleDetails);
@@ -39,5 +42,9 @@ router.post('/deleted-samples/restore/:id', protect, samplesController.restoreSa
 // PUT /api/samples/:id/take
 router.put("/:id/take", samplesController.takeSample);
 router.put("/putback/:id", samplesController.putBackSample);
+
+router.patch("/increase-positions-by-shelf-division", samplesController.increasePositionsByShelfAndDivision)
+router.patch("/decrease-positions-by-shelf-division", samplesController.decreasePositionsByShelfAndDivision)
+router.patch("/normalize-positions-in-division", samplesController.normalizePositions)
 
 module.exports = router;
