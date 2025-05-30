@@ -952,7 +952,6 @@ exports.decreasePositionsByShelfAndDivision = async (req, res) => {
 
 const normalizeFieldsToNumbers = require('../utils/nomalizeFieldsToNumbers');
 
-// app.patch('/normalize-positions',
 exports.normalizePositions = async (req, res) => {
   let { shelf, division } = req.body;
 console.log('hit normalize positions');
@@ -1001,4 +1000,3 @@ console.log('hit normalize positions');
     res.status(500).json({ message: 'Server error' });
   }
 };
-

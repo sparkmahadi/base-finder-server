@@ -1,41 +1,43 @@
 const { db } = require("../db");
 const { ObjectId } = require("mongodb");
+const normalizeFieldsToNumbers = require("../utils/nomalizeFieldsToNumbers");
 
 const sampleCategoriesCollection = db.collection("sample-categories");
+const samplesCollection = db.collection("samples");
 const utilitiesCollection = db.collection("utilities");
 
 // Get all SampleCategories
 module.exports.getSampleCategories = async (req, res) => {
-    console.log('GET /SampleCategories');
-    try {
-        const result = await sampleCategoriesCollection.find().toArray();
-        res.status(200).json({
-            success: true,
-            message: `${result.length} Sample Categories found`,
-            SampleCategories: result,
-        });
-    } catch (error) {
-        console.error('Error fetching Sample Categories:', error);
-        res.status(500).json({ success: false, message: 'Server Error' });
-    }
+  console.log('GET /SampleCategories');
+  try {
+    const result = await sampleCategoriesCollection.find().toArray();
+    res.status(200).json({
+      success: true,
+      message: `${result.length} Sample Categories found`,
+      SampleCategories: result,
+    });
+  } catch (error) {
+    console.error('Error fetching Sample Categories:', error);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
 };
 
 module.exports.deleteCategory = async (req, res) => {
-    const { id } = req.params;
-    console.log('attempt delete category');
-    try {
-      const result = await sampleCategoriesCollection.deleteOne({ _id: new ObjectId(id) });
-      console.log(result);
-      if (result.deletedCount > 0) {
-        res.send({ success: true, message: 'Category deleted successfully' });
-      } else{
-        res.send({success: false, message: "Category not found"});
-      }
-    } catch (error) {
-      res.status(500).send({ message: 'Error deleting category', error });
+  const { id } = req.params;
+  console.log('attempt delete category');
+  try {
+    const result = await sampleCategoriesCollection.deleteOne({ _id: new ObjectId(id) });
+    console.log(result);
+    if (result.deletedCount > 0) {
+      res.send({ success: true, message: 'Category deleted successfully' });
+    } else {
+      res.send({ success: false, message: "Category not found" });
     }
-  };
-    
+  } catch (error) {
+    res.status(500).send({ message: 'Error deleting category', error });
+  }
+};
+
 module.exports.postCategory = async (req, res) => {
   const { cat_name, status, totalSamples, createdBy } = req.body;
 
@@ -493,5 +495,50 @@ module.exports.deleteUtility = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid Utility ID format' });
     }
     return res.status(500).json({ success: false, message: 'Server error', error: error.message });
+  }
+};
+
+exports.convertFieldsToNumbers = async (req, res) => {
+  console.log('hit convert positions');
+
+  try {
+    // ✅ Step 1: Normalize all shelf, division, and position fields to numbers
+    let updatedCount = 0;
+
+  const cursor = samplesCollection.find({});
+
+  for await (const doc of cursor) {
+    const update = {};
+    const numericShelf = parseInt(doc.shelf);
+    const numericDivision = parseInt(doc.division);
+    const numericPosition = parseInt(doc.position);
+
+    if (!isNaN(numericShelf)) update.shelf = numericShelf;
+    if (!isNaN(numericDivision)) update.division = numericDivision;
+    if (!isNaN(numericPosition)) update.position = numericPosition;
+
+    if (Object.keys(update).length > 0) {
+      const result = await samplesCollection.updateOne({ _id: doc._id }, { $set: update });
+      if(result.modifiedCount){
+        updatedCount++;
+      }
+      console.log(result, updatedCount);
+    }
+  }
+
+    if (updatedCount > 0) {
+      res.json({
+        success: true,
+        message: `${updatedCount} Fields converted successfully`,
+      });
+    } else {
+      res.json({
+        message: 'No matching documents found to convert',
+      });
+    }
+
+  } catch (err) {
+    console.error('convertion Error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 };

@@ -19,11 +19,14 @@ router.get('/divisions', utilityController.getDivisions);
 
 // UPDATE routes
 router.put('/categories', utilityController.updateUtility); // PUT request to update by ID in body
-router.put('/utilities', utilityController.updateUtility);   // PUT request to update by ID in body
+router.put('/', utilityController.updateUtility);   // PUT request to update by ID in body
+
+
+router.patch('/convert-shelfs-divisions-positions-to-numbers', utilityController.convertFieldsToNumbers);   // PUT request to update by ID in body
 
 // DELETE routes
 router.delete('/categories/:id', utilityController.deleteCategory); // DELETE request with ID in URL param
-router.delete('/utilities/:type/:id', utilityController.deleteUtility); // DELETE request with type and ID in URL params
+router.delete('/:type/:id', utilityController.deleteUtility); // DELETE request with type and ID in URL params
 
 router.route("/categories/:id").delete(utilityController.deleteCategory);
 

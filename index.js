@@ -12,6 +12,7 @@ const sampleRoutes = require('./routes/sampleRoutes')
 const authRoutes = require('./routes/authRoutes');
 const utilityRoutes = require('./routes/utilityRoutes');
 const userRoutes = require('./routes/userRoutes');
+const sampleConflictRoutes = require('./routes/sampleConflictRoutes');
 const { ObjectId } = require('mongodb');
 
 
@@ -249,3 +250,4 @@ app.use('/api/samples', sampleRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/utilities', utilityRoutes);
 app.use('/api/users', userRoutes); // Mount user routes
+app.use('/api/samples-conflict', sampleConflictRoutes); // Mount user routes
