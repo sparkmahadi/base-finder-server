@@ -26,18 +26,22 @@ router.route('/buyers')
 router.route('/unique')
     .get(samplesController.getUniqueFieldValues)
 
+router.route('/check-position-availability')
+    .get(samplesController.checkPositionAvailability)
+
 router.route('/get-by-shelf-and-division')
     .get(samplesController.getSamplesByShelfAndDivision)
 
 router.post('/upload-excel', samplesController.uploadSamplesFromExcel);
+router.get('/deleted-samples', samplesController.getDeletedSamples);
+router.put('/deleted-samples/restore/:id', samplesController.restoreSample);
 
 router.get('/:id', samplesController.getSampleDetails);
 router.put('/:id', samplesController.updateSampleById);
 
 // Protected routes
+router.delete('/permanent-delete/:id', protect, samplesController.deleteSamplePermanently);
 router.delete('/:id', protect, samplesController.deleteSample);
-router.get('/deleted-samples', protect, samplesController.getDeletedSamples);
-router.post('/deleted-samples/restore/:id', protect, samplesController.restoreSample);
 
 // PUT /api/samples/:id/take
 router.put("/:id/take", samplesController.takeSample);

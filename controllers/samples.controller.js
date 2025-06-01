@@ -194,45 +194,6 @@ exports.getTakenSamples = async (req, res) => {
   }
 };
 
-
-// Add a new sample - old controller
-// exports.postSample = async (req, res) => {
-//   console.log('POST /samples');
-//   try {
-//     const { position, shelf, division } = req.body;
-
-//     const numericPosition = Number(position);
-//     if (!numericPosition || numericPosition < 1) {
-//       return res.status(400).json({ success: false, message: "Invalid position" });
-//     }
-
-//     // Step 1: Find all matching samples and shift positions manually
-//     const samplesToShift = await samplesCollection
-//       .find({ shelf, division })
-//       .toArray();
-
-//     for (const s of samplesToShift) {
-//       const currentPos = Number(s.position);
-//       if (!isNaN(currentPos) && currentPos >= numericPosition) {
-//         await samplesCollection.updateOne(
-//           { _id: s._id },
-//           { $set: { position: currentPos + 1 } }
-//         );
-//       }
-//     }
-//     const newSample = req.body;
-//     const result = await samplesCollection.insertOne(newSample);
-
-//     if (result.insertedId) {
-//       return res.status(201).json({ success: true, message: 'Sample inserted', id: result.insertedId });
-//     }
-//     res.status(400).json({ success: false, message: 'Failed to insert sample' });
-//   } catch (error) {
-//     console.error('Error inserting sample:', error);
-//     res.status(500).json({ success: false, message: 'Server Error' });
-//   }
-// };
-
 exports.postSample = async (req, res) => {
   console.log('POST /samples');
   try {
@@ -377,156 +338,6 @@ exports.updateSampleById = async (req, res) => {
     res.status(500).json({ message: 'Error updating sample', error });
   }
 };
-
-
-// Controller: putBackSample.js -------old controller
-// exports.putBackSample = async (req, res) => {
-//   console.log('hit putback');
-//   try {
-//     const sampleId = req.params.id;
-//     const { position, returned_by, return_purpose } = req.body;
-
-//     const numericPosition = Number(position);
-//     if (!numericPosition || numericPosition < 1) {
-//       return res.status(400).json({ success: false, message: "Invalid position" });
-//     }
-
-//     const sample = await takenSamplesCollection.findOne({ _id: new ObjectId(sampleId) });
-//     if (!sample) {
-//       return res.status(404).json({ success: false, message: "Sample not found in takenSamples" });
-//     }
-
-//     const { shelf, division } = sample;
-
-//     // Step 1: Find all matching samples and shift positions manually
-//     const samplesToShift = await samplesCollection
-//       .find({ shelf, division })
-//       .toArray();
-
-//     for (const s of samplesToShift) {
-//       const currentPos = Number(s.position);
-//       if (!isNaN(currentPos) && currentPos >= numericPosition) {
-//         await samplesCollection.updateOne(
-//           { _id: s._id },
-//           { $set: { position: currentPos + 1 } }
-//         );
-//       }
-//     }
-
-
-//     // 🧾 Step 2: Prepare and insert back into samplesCollection
-//     const restoredSample = {
-//       ...sample,
-//       position: numericPosition,
-//       availability: "yes",
-//       returned_at: new Date(),
-//       returned_log: [
-//         ...(sample.returned_log || []),
-//         {
-//           returned_by,
-//           purpose: return_purpose,
-//           returned_at: new Date()
-//         }
-//       ]
-//     };
-
-//     delete restoredSample._id;
-
-//     const insertResult = await samplesCollection.insertOne(restoredSample);
-//     if (!insertResult.insertedId) {
-//       console.log('insertion failed');
-//       return res.status(500).json({ success: false, message: "Insert failed" });
-//     }
-
-//     // 🗑️ Step 3: Remove from takenSamples
-//     const deletion = await takenSamplesCollection.deleteOne({ _id: new ObjectId(sampleId) });
-//     if(deletion.deletedCount>0){
-//       res.status(200).json({
-//         success: true,
-//         message: `Sample kept back at position ${numericPosition} on shelf ${shelf} - division ${division}`,
-//       });
-//     } else{
-//       console.log('deletion failed');
-//       res.send({success: false, message: "sample deletion failed"})
-//     }
-
-//   } catch (err) {
-//     console.error("Error in putBackSample:", err);
-//     res.status(500).json({ success: false, message: "Server error" });
-//   }
-// };
-// In routes/samples.js---------old controller
-// exports.takeSample = async (req, res) => {
-//   console.log('hit take sample');
-//   try {
-//     const sampleId = req.params.id;
-//     const { taken_by, purpose } = req.body;
-//     if (!taken_by || !purpose) {
-//       return res.status(400).json({ success: false, message: "Missing taken_by or purpose" });
-//     }
-
-//     const timestamp = new Date();
-
-//     // Fetch the sample
-//     const sample = await samplesCollection.findOne({ _id: new ObjectId(sampleId) });
-//     if (!sample) {
-//       return res.status(404).json({ success: false, message: "Sample not found" });
-//     }
-
-//     // Prepare new fields
-//     const logEntry = {
-//       taken_by,
-//       purpose,
-//       taken_at: timestamp
-//     };
-
-//     const updatedSample = {
-//       ...sample,
-//       last_taken_by: taken_by,
-//       last_taken_at: timestamp,
-//       availability: "no",
-//       taken_logs: [...(sample.taken_logs || []), logEntry]
-//     };
-
-//     // Move to takenSamples collection
-//     const insertResult = await takenSamplesCollection.insertOne(updatedSample);
-//     if (!insertResult.insertedId) {
-//       return res.status(500).json({ success: false, message: "Failed to archive the sample" });
-//     }
-
-//     // Step 2: Adjust position of samples below in the same shelf/division
-//     const positionUpdate = await samplesCollection.updateMany(
-//       {
-//         shelf: sample.shelf,
-//         division: sample.division,
-//         position: { $gt: sample.position }
-//       },
-//       { $inc: { position: -1 } }
-//     );
-//     if (positionUpdate.modifiedCount > 0) {
-//       console.log('positions updated');
-//     }
-
-
-//     // Delete from active samples collection
-//     const deleteResult = await samplesCollection.deleteOne({ _id: new ObjectId(sampleId) });
-//     if (deleteResult.deletedCount === 0) {
-//       return res.status(500).json({ success: false, message: "Archived the sample but Failed to delete original sample" });
-//     }
-//     console.log("sampleId", sampleId);
-//     return res.status(200).json({
-//       success: true,
-//       message: `${sample.status} Sample of ${sample.style} ${sample.category}, is taken for "${purpose}"`,
-//       taken_by,
-//       taken_at: timestamp,
-//       purpose
-//     });
-
-//   } catch (err) {
-//     console.error("Error in /take:", err);
-//     return res.status(500).json({ success: false, message: "Server error" });
-//   }
-// };
 
 // Controller: takeSample.js
 exports.takeSample = async (req, res) => {
@@ -687,8 +498,11 @@ exports.putBackSample = async (req, res) => {
 exports.deleteSample = async (req, res) => {
   console.log('DELETE /samples/:id');
   const { id } = req.params;
-  const userId = req.user.id;
-  console.log(userId);
+  const userId = req.user?.id; // Use optional chaining to safely access req.user.id
+  const username = req.user?.username; // Use optional chaining to safely access req.user.id
+  // ✅ FIX 1: Correctly convert query parameter to boolean
+  const reduceOtherPositions = req.query.reducePositions;
+  console.log(`reduceOtherPositions: ${reduceOtherPositions}`);
 
   // ✅ Validate ObjectId
   if (!ObjectId.isValid(id)) {
@@ -701,58 +515,228 @@ exports.deleteSample = async (req, res) => {
     const sample = await samplesCollection.findOne({ _id: objectId });
 
     if (!sample) {
-      return res.json({ success: false, message: 'Sorry, Sample not found' });
+      return res.status(404).json({ success: false, message: 'Sorry, Sample not found' }); // ✅ Use 404 for Not Found
     }
 
+    // --- Start Position Reduction Logic (if requested) ---
+    if (reduceOtherPositions === "yes") {
+      let { shelf, division, position } = sample;
+
+      // ✅ Ensure these are parsed to numbers for logic, even if DB has them as strings initially
+      // (The normalization step below will permanently fix the DB, but parsing here ensures current operation works)
+      const numericShelf = parseInt(shelf);
+      const numericDivision = parseInt(division);
+      const numericPosition = parseInt(position);
+
+      if (isNaN(numericShelf) || isNaN(numericDivision) || isNaN(numericPosition)) {
+        // This case implies a corrupt sample. Suggest logging and perhaps not proceeding with reduction.
+        console.warn(`Sample ${id} has non-numeric shelf, division, or position. Skipping position reduction.`);
+        // You might want to return an error here, or just skip the reduction and proceed with deletion.
+        // For now, let's proceed with deletion but log the warning.
+        // return res.status(400).json({ success: false, message: 'Sample location data is invalid. Cannot reduce positions.' });
+      } else {
+        console.log('Decrease positions for Shelf:', numericShelf, 'Division:', numericDivision, 'Above position:', numericPosition);
+
+        try {
+          // Step 1: Normalize DB fields (move this to a separate, less frequent script if database is large,
+          // or run it once during migration. For smaller collections, it's okay here but less efficient if run often)
+          // This block can be removed if you are certain all your 'shelf', 'division', 'position' fields are numbers.
+          const stringNumericFieldsCursor = samplesCollection.find({
+            $or: [
+              { shelf: { $type: "string" } },
+              { division: { $type: "string" } },
+              { position: { $type: "string" } }
+            ]
+          });
+
+          for await (const doc of stringNumericFieldsCursor) {
+            const update = {};
+            const parsedShelf = parseInt(doc.shelf);
+            const parsedDivision = parseInt(doc.division);
+            const parsedPosition = parseInt(doc.position);
+
+            if (!isNaN(parsedShelf) && typeof doc.shelf === 'string') update.shelf = parsedShelf;
+            if (!isNaN(parsedDivision) && typeof doc.division === 'string') update.division = parsedDivision;
+            if (!isNaN(parsedPosition) && typeof doc.position === 'string') update.position = parsedPosition;
+
+            if (Object.keys(update).length > 0) {
+              await samplesCollection.updateOne({ _id: doc._id }, { $set: update });
+              console.log(`Normalized fields for doc ${doc._id}: ${JSON.stringify(update)}`);
+            }
+          }
+
+          // Step 2: Perform the actual position update
+          const query = {
+            shelf: numericShelf,     // Use the parsed numeric values
+            division: numericDivision, // Use the parsed numeric values
+            position: { $gt: numericPosition } // Use the parsed numeric value
+          };
+
+          const preview = await samplesCollection.find(query).toArray();
+          console.log(`Found ${preview.length} document(s) to update for position decrease.`);
+
+          const result = await samplesCollection.updateMany(query, {
+            $inc: { position: -1 }
+          });
+
+          if (result.modifiedCount > 0) {
+            console.log(`Successfully decreased positions for ${result.modifiedCount} document(s).`);
+          } else {
+            console.log('No positions were updated — no matching documents for decrease.');
+          }
+
+        } catch (err) {
+          console.error('Error while decreasing positions:', err);
+          // ✅ Do NOT send a response here. Just log and let the main handler proceed to delete the sample.
+          // This specific error might mean positions aren't adjusted, but the sample can still be deleted.
+          // If you *must* block deletion due to this, then return here, but remember to ensure no double responses.
+        }
+      }
+    }
+    // --- End Position Reduction Logic ---
+
+    // ✅ Perform sample deletion ONLY AFTER position reduction (if any) is attempted.
     await deletedSamplesCollection.insertOne({
       ...sample,
-      deletedBy: userId,
+      deletedByUserId: userId, // Ensure userId is available, otherwise this might be null/undefined
+      deletedBy: username, // Ensure userId is available, otherwise this might be null/undefined
       deletedAt: new Date(),
     });
 
-    await samplesCollection.deleteOne({ _id: objectId });
+    const deleteResult = await samplesCollection.deleteOne({ _id: objectId });
 
-    res.status(200).json({ success: true, message: `Sample: ${id} moved to recycle bin` });
+    if (deleteResult.deletedCount === 0) {
+      // This case implies sample was removed by another process right before deleteOne.
+      return res.status(404).json({ success: false, message: 'Sample not found for final deletion (might have been deleted concurrently).' });
+    }
+
+    // ✅ Single point of success response
+    res.status(200).json({ success: true, message: `Sample: ${id} deleted and moved to recycle bin` });
+
   } catch (error) {
-    console.error('Error deleting sample:', error);
-    res.status(500).json({ success: false, message: 'Server Error' });
+    console.error('Error in deleteSample controller:', error); // More generic catch for unexpected errors
+    res.status(500).json({ success: false, message: 'Server Error occurred during sample deletion.' });
   }
 };
 
+// Permanently delete a sample
+exports.deleteSamplePermanently = async (req, res) => {
+  console.log('Final DELETE /samples/:id');
+  const { id } = req.params;
+  console.log(id);
+  // ✅ Validate ObjectId
+  if (!ObjectId.isValid(id)) {
+    return res.status(400).json({ success: false, message: 'Invalid sample ID' });
+  }
+
+  try {
+    const objectId = new ObjectId(id);
+
+    const sample = await deletedSamplesCollection.findOne({ _id: objectId });
+
+    if (!sample) {
+      return res.status(404).json({ success: false, message: 'Sorry, Sample not found' }); // ✅ Use 404 for Not Found
+    }
+
+    const deleteResult = await deletedSamplesCollection.deleteOne({ _id: objectId });
+
+    if (deleteResult.deletedCount === 0) {
+      // This case implies sample was removed by another process right before deleteOne.
+      return res.status(404).json({ success: false, message: 'Sample not found for final deletion (might have been deleted concurrently).' });
+    }
+
+    // ✅ Single point of success response
+    res.status(200).json({ success: true, message: `Sample: ${id} deleted permanently` });
+
+  } catch (error) {
+    console.error('Error in deleteSample controller:', error); // More generic catch for unexpected errors
+    res.status(500).json({ success: false, message: 'Server Error occurred during sample deletion.' });
+  }
+};
 
 // Get deleted samples
 exports.getDeletedSamples = async (req, res) => {
-  console.log('GET /samples/deleted-samples');
+  console.log('GET /deleted-samples');
   try {
-    const deletedSamples = await deletedSamplesCollection.find().toArray();
-    res.status(200).json({ success: true, data: deletedSamples });
+    const result = await deletedSamplesCollection.find().toArray();
+    res.status(200).json({
+      success: true,
+      message: `${result.length} samples found`,
+      samples: result,
+    });
   } catch (error) {
     console.error('Error fetching deleted samples:', error);
     res.status(500).json({ success: false, message: 'Server Error' });
   }
 };
 
+exports.checkPositionAvailability = async (req, res) => {
+  console.log('hit position check');
+  const { shelf, division, position } = req.query;
+  console.log(shelf, division, position);
+  if (shelf && division && position) {
+    const parsedShelf = parseInt(shelf);
+    const parsedDivision = parseInt(division);
+    const parsedPosition = parseInt(position);
+
+    if (!parsedShelf || !parsedDivision || !parsedPosition) {
+      return res.send({ success: false, message: "Data cannot be parsed. Send a valid combination" })
+    }
+    const query = { shelf: parsedShelf, division: parsedDivision, position: parsedPosition, }
+    const currentPositionHolders = await samplesCollection.find(query).toArray();
+    console.log(currentPositionHolders);
+    if (currentPositionHolders?.length > 0) {
+      return res.status(200).json({
+        success: true,
+        isPositionEmpty: false,
+        message: `Total ${currentPositionHolders.length} sample is found in position ${parsedPosition}`,
+        currentSamples: currentPositionHolders
+      });
+    }
+    else {
+      return res.status(200).json({
+        success: true,
+        isPositionEmpty: true,
+        message: `Position is empty. You can place`,
+      });
+    }
+  } else {
+    res.send({ success: false, message: "Valid Position is not found" })
+  }
+}
+
 // Restore a deleted sample
 exports.restoreSample = async (req, res) => {
-  console.log('POST /samples/deleted-samples/restore/:id');
+  console.log('PUT /deleted-samples/restore/:id');
   const { id } = req.params;
+  const { position, restored_by } = req.body;
 
-  try {
-    const deletedSample = await deletedSamplesCollection.findOne({ _id: new ObjectId(id) });
+  if (position && restored_by) {
+    try {
+      const deletedSample = await deletedSamplesCollection.findOne({ _id: new ObjectId(id) });
 
-    if (!deletedSample) {
-      return res.status(404).json({ success: false, message: 'Deleted sample not found' });
+      if (!deletedSample) {
+        return res.status(404).json({ success: false, message: 'Deleted sample not found' });
+      }
+
+      // Destructure and prepare data for restoration
+      // Ensure that 'sampleData' doesn't contain '_id' or 'position' from the deleted document
+      const { _id: deletedSampleId, position: deletedSamplePosition, ...sampleDataToRestore } = deletedSample;
+
+      // Prepare the data to be inserted into the samples collection
+      const restoringData = { ...sampleDataToRestore, restored_by, position }; // Use the new position from req.body
+
+      await samplesCollection.insertOne(restoringData);
+      await deletedSamplesCollection.deleteOne({ _id: new ObjectId(id) });
+
+      res.status(200).json({ success: true, message: 'Sample restored successfully' });
+
+    } catch (error) {
+      console.error('Error restoring sample:', error);
+      res.status(500).json({ success: false, message: 'Server Error' });
     }
-
-    const { _id, deletedBy, deletedAt, ...sampleData } = deletedSample;
-
-    await samplesCollection.insertOne(sampleData);
-    await deletedSamplesCollection.deleteOne({ _id: new ObjectId(id) });
-
-    res.status(200).json({ success: true, message: 'Sample restored successfully' });
-  } catch (error) {
-    console.error('Error restoring sample:', error);
-    res.status(500).json({ success: false, message: 'Server Error' });
+  } else {
+    res.status(400).json({ success: false, message: "Position or restored_by is not found in the request body." }); // Changed status to 400 for bad request
   }
 };
 
@@ -954,7 +938,7 @@ const normalizeFieldsToNumbers = require('../utils/nomalizeFieldsToNumbers');
 
 exports.normalizePositions = async (req, res) => {
   let { shelf, division } = req.body;
-console.log('hit normalize positions');
+  console.log('hit normalize positions');
   // Convert inputs to numbers
   shelf = parseInt(shelf);
   division = parseInt(division);
