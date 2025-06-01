@@ -41,62 +41,41 @@ app.get('/', (req, res) => {
   res.send('Base Finder by Mahadi, Server is running')
 })
 
-// app.use('/api/samples', sampleRoutes);
-// app.use('/api/auth', authRoutes);
-// app.use('/api/utilities', utilityRoutes);
-
-// 404 handler (keep at the end)
-// app.use((req, res) => {
-//   res.json({ message: "Route not found" });
-// });
-
-
-// **READ** - Get all categories
-app.get('/api/utilities/categories', async (req, res) => {
-  try {
-    const categories = await categoriesCollection.find().toArray();
-    res.json(categories);
-  } catch (error) {
-    res.status(500).json({ message: 'Error fetching categories', error });
-  }
-});
 
 // **READ** - Get category by cat_id
-app.get('/api/utilities/categories/:cat_id', async (req, res) => {
-  const { cat_id } = req.params;
-  try {
-    const category = await categoriesCollection.findOne({ cat_id });
-    if (!category) {
-      return res.json({ message: 'Category not found' });
-    }
-    res.json(category);
-  } catch (error) {
-    res.status(500).json({ message: 'Error fetching category', error });
-  }
-});
+// app.get('/api/utilities/categories/:cat_id', async (req, res) => {
+//   const { cat_id } = req.params;
+//   try {
+//     const category = await categoriesCollection.findOne({ cat_id });
+//     if (!category) {
+//       return res.json({ message: 'Category not found' });
+//     }
+//     res.json(category);
+//   } catch (error) {
+//     res.status(500).json({ message: 'Error fetching category', error });
+//   }
+// });
 
 // **UPDATE** - Update a category by cat_id
-app.put('/api/utilities/categories/:cat_id', async (req, res) => {
-  const { cat_id } = req.params;
-  const { cat_name, buyer_name, status, totalSamples } = req.body;
-  console.log(cat_id, req.body);
+// app.put('/api/utilities/categories/:cat_id', async (req, res) => {
+//   const { cat_id } = req.params;
+//   const { cat_name, buyer_name, status, totalSamples } = req.body;
+//   console.log(cat_id, req.body);
 
-  try {
-    const updatedCategory = await categoriesCollection.findOneAndUpdate(
-      { cat_id },
-      { $set: { cat_name, buyer_name, status, totalSamples } },
-      { returnDocument: 'after' }
-    );
-    if (!updatedCategory.value) {
-      return res.json({ message: 'Category not found' });
-    }
-    res.send("sample category updated");
-  } catch (error) {
-    res.status(500).json({ message: 'Error updating category', error });
-  }
-});
-
-// **DELETE** - Delete a category by cat_id
+//   try {
+//     const updatedCategory = await categoriesCollection.findOneAndUpdate(
+//       { cat_id },
+//       { $set: { cat_name, buyer_name, status, totalSamples } },
+//       { returnDocument: 'after' }
+//     );
+//     if (!updatedCategory.value) {
+//       return res.json({ message: 'Category not found' });
+//     }
+//     res.send("sample category updated");
+//   } catch (error) {
+//     res.status(500).json({ message: 'Error updating category', error });
+//   }
+// });
 
 
 // GET unique category + buyer pairs with totalSamples from samplesCollection

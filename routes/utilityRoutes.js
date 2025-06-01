@@ -4,7 +4,7 @@ const samplesController = require('../controllers/samples.controller');
 const utilityController = require('../controllers/utility.controller');
 
 // Public routes
-router.route('/categories').get(samplesController.getSamples)
+router.route('/categories').get(utilityController.getSampleCategories)
     .post(utilityController.postCategory);
 
 router.route("/buyers").post(utilityController.postBuyer);
@@ -18,8 +18,12 @@ router.get('/shelfs', utilityController.getShelves);
 router.get('/divisions', utilityController.getDivisions);
 
 // UPDATE routes
-router.put('/categories', utilityController.updateUtility); // PUT request to update by ID in body
-router.put('/', utilityController.updateUtility);   // PUT request to update by ID in body
+router.put('/categories', utilityController.updateCategory);
+ // PUT request to update by ID in body
+router.put('/buyers', utilityController.updateUtility);
+router.put('/statuses', utilityController.updateUtility);
+router.put('/shelfs', utilityController.updateUtility);
+router.put('/divisions', utilityController.updateUtility);  // PUT request to update by ID in body
 
 
 router.patch('/convert-shelfs-divisions-positions-to-numbers', utilityController.convertFieldsToNumbers);   // PUT request to update by ID in body

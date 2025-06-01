@@ -14,7 +14,7 @@ module.exports.getSampleCategories = async (req, res) => {
     res.status(200).json({
       success: true,
       message: `${result.length} Sample Categories found`,
-      SampleCategories: result,
+      data: result,
     });
   } catch (error) {
     console.error('Error fetching Sample Categories:', error);
@@ -40,8 +40,8 @@ module.exports.deleteCategory = async (req, res) => {
 
 module.exports.postCategory = async (req, res) => {
   const { cat_name, status, totalSamples, createdBy } = req.body;
-
-  if (!cat_name || !status || totalSamples || createdBy === undefined) {
+  console.log(cat_name, status, totalSamples, createdBy);
+  if (!cat_name || !status || !totalSamples || createdBy === undefined) {
     return res.status(400).json({ success: false, message: 'Missing required fields' });
   }
 
@@ -50,7 +50,6 @@ module.exports.postCategory = async (req, res) => {
     const existingCategory = await sampleCategoriesCollection.findOne({
       cat_name: cat_name.trim()
     });
-
     if (existingCategory) {
       return res.send({
         success: false,
@@ -62,7 +61,7 @@ module.exports.postCategory = async (req, res) => {
     // If no duplicate, insert new category
     const newCategory = { cat_name, status, totalSamples, createdBy, createdAt: new Date() };
     const result = await sampleCategoriesCollection.insertOne(newCategory);
-
+console.log(result);
     if (result.acknowledged) {
       return res.status(201).json({
         success: true,
@@ -79,9 +78,10 @@ module.exports.postCategory = async (req, res) => {
 
 // Controller for creating a new Buyer
 module.exports.postBuyer = async (req, res) => {
-  const { name, createdBy } = req.body; // Destructure 'createdBy' from req.body
-
-  if (!name || name.trim() === '') {
+  console.log("post buyer");
+  const { value, createdBy } = req.body; // Destructure 'createdBy' from req.body
+  console.log(value, createdBy);
+  if (!value || value.trim() === '') {
     return res.status(400).json({ success: false, message: 'Buyer name is required' });
   }
   // Add validation for createdBy
@@ -92,7 +92,7 @@ module.exports.postBuyer = async (req, res) => {
   try {
     const existingBuyer = await utilitiesCollection.findOne({
       utility_type: 'buyer', // Renamed from 'type'
-      value: name.trim(),    // Renamed from 'name'
+      value: value.trim(),    // Renamed from 'name'
     });
 
     if (existingBuyer) {
@@ -105,7 +105,7 @@ module.exports.postBuyer = async (req, res) => {
 
     const newBuyer = {
       utility_type: 'buyer',
-      value: name.trim(),
+      value: value.trim(),
       createdBy: createdBy.trim(), // Assign createdBy
       createdAt: new Date()
     };
@@ -127,9 +127,9 @@ module.exports.postBuyer = async (req, res) => {
 
 // Controller for creating a new Status
 module.exports.postStatus = async (req, res) => {
-  const { name, createdBy } = req.body; // Destructure 'createdBy' from req.body
+  const { value, createdBy } = req.body; // Destructure 'createdBy' from req.body
 
-  if (!name || name.trim() === '') {
+  if (!value || value.trim() === '') {
     return res.status(400).json({ success: false, message: 'Status name is required' });
   }
   // Add validation for createdBy
@@ -140,7 +140,7 @@ module.exports.postStatus = async (req, res) => {
   try {
     const existingStatus = await utilitiesCollection.findOne({
       utility_type: 'status', // Renamed from 'type'
-      value: name.trim(),    // Renamed from 'name'
+      value: value.trim(),    // Renamed from 'name'
     });
 
     if (existingStatus) {
@@ -153,7 +153,7 @@ module.exports.postStatus = async (req, res) => {
 
     const newStatus = {
       utility_type: 'status',
-      value: name.trim(),
+      value: value.trim(),
       createdBy: createdBy.trim(), // Assign createdBy
       createdAt: new Date()
     };
@@ -175,9 +175,9 @@ module.exports.postStatus = async (req, res) => {
 
 // Controller for creating a new Shelf
 module.exports.postShelf = async (req, res) => {
-  const { number, createdBy } = req.body; // Destructure 'createdBy' from req.body
+  const { value, createdBy } = req.body; // Destructure 'createdBy' from req.body
 
-  if (!number || String(number).trim() === '') {
+  if (!value || String(value).trim() === '') {
     return res.status(400).json({ success: false, message: 'Shelf number is required' });
   }
   // Add validation for createdBy
@@ -188,7 +188,7 @@ module.exports.postShelf = async (req, res) => {
   try {
     const existingShelf = await utilitiesCollection.findOne({
       utility_type: 'shelf', // Renamed from 'type'
-      value: String(number).trim(), // Renamed from 'number'
+      value: String(value).trim(), // Renamed from 'number'
     });
 
     if (existingShelf) {
@@ -201,7 +201,7 @@ module.exports.postShelf = async (req, res) => {
 
     const newShelf = {
       utility_type: 'shelf',
-      value: String(number).trim(),
+      value: String(value).trim(),
       createdBy: createdBy.trim(), // Assign createdBy
       createdAt: new Date()
     };
@@ -223,9 +223,9 @@ module.exports.postShelf = async (req, res) => {
 
 // Controller for creating a new Division
 module.exports.postDivision = async (req, res) => {
-  const { number, createdBy } = req.body; // Destructure 'createdBy' from req.body
+  const { value, createdBy } = req.body; // Destructure 'createdBy' from req.body
 
-  if (!number || String(number).trim() === '') {
+  if (!value || String(value).trim() === '') {
     return res.status(400).json({ success: false, message: 'Division number is required' });
   }
   // Add validation for createdBy
@@ -236,7 +236,7 @@ module.exports.postDivision = async (req, res) => {
   try {
     const existingDivision = await utilitiesCollection.findOne({
       utility_type: 'division', // Renamed from 'type'
-      value: String(number).trim(), // Renamed from 'number'
+      value: String(value).trim(), // Renamed from 'number'
     });
 
     if (existingDivision) {
@@ -249,7 +249,7 @@ module.exports.postDivision = async (req, res) => {
 
     const newDivision = {
       utility_type: 'division',
-      value: String(number).trim(),
+      value: String(value).trim(),
       createdBy: createdBy.trim(), // Assign createdBy
       createdAt: new Date()
     };
@@ -365,7 +365,8 @@ module.exports.getDivisions = async (req, res) => {
 
 
 // Controller to update an existing Category
-module.exports.putCategory = async (req, res) => {
+module.exports.updateCategory = async (req, res) => {
+  console.log('update category');
   const { _id, cat_name, status, totalSamples, createdBy } = req.body;
 
   if (!_id || !cat_name || !status || totalSamples === undefined || !createdBy) {
@@ -407,8 +408,9 @@ module.exports.putCategory = async (req, res) => {
 
 // Controller to update an existing Utility (Buyer, Status, Shelf, Division)
 module.exports.updateUtility = async (req, res) => {
+  console.log("update utility");
   const { _id, utility_type, value, createdBy } = req.body;
-
+  console.log(_id, utility_type, value, createdBy);
   if (!_id || !utility_type || !value || !createdBy) {
     return res.status(400).json({ success: false, message: 'Missing required fields for update' });
   }
@@ -474,16 +476,17 @@ module.exports.deleteCategory = async (req, res) => {
 
 // Controller to delete an existing Utility (Buyer, Status, Shelf, Division)
 module.exports.deleteUtility = async (req, res) => {
+  console.log('hit delete utility');
   const { id, type } = req.params; // Expect ID and type in URL params
-
+  console.log(id, type);
   if (!id || !type) {
     return res.status(400).json({ success: false, message: 'Utility ID and type are required for deletion' });
   }
 
   try {
     const objectId = new ObjectId(id); // Convert string ID to ObjectId
-    const result = await utilitiesCollection.deleteOne({ _id: objectId, utility_type: type.trim() });
-
+    console.log(objectId);
+    const result = await utilitiesCollection.deleteOne({ _id: objectId });
     if (result.deletedCount === 0) {
       return res.status(404).json({ success: false, message: `${type} not found or type mismatch` });
     }
@@ -505,26 +508,26 @@ exports.convertFieldsToNumbers = async (req, res) => {
     // ✅ Step 1: Normalize all shelf, division, and position fields to numbers
     let updatedCount = 0;
 
-  const cursor = samplesCollection.find({});
+    const cursor = samplesCollection.find({});
 
-  for await (const doc of cursor) {
-    const update = {};
-    const numericShelf = parseInt(doc.shelf);
-    const numericDivision = parseInt(doc.division);
-    const numericPosition = parseInt(doc.position);
+    for await (const doc of cursor) {
+      const update = {};
+      const numericShelf = parseInt(doc.shelf);
+      const numericDivision = parseInt(doc.division);
+      const numericPosition = parseInt(doc.position);
 
-    if (!isNaN(numericShelf)) update.shelf = numericShelf;
-    if (!isNaN(numericDivision)) update.division = numericDivision;
-    if (!isNaN(numericPosition)) update.position = numericPosition;
+      if (!isNaN(numericShelf)) update.shelf = numericShelf;
+      if (!isNaN(numericDivision)) update.division = numericDivision;
+      if (!isNaN(numericPosition)) update.position = numericPosition;
 
-    if (Object.keys(update).length > 0) {
-      const result = await samplesCollection.updateOne({ _id: doc._id }, { $set: update });
-      if(result.modifiedCount){
-        updatedCount++;
+      if (Object.keys(update).length > 0) {
+        const result = await samplesCollection.updateOne({ _id: doc._id }, { $set: update });
+        if (result.modifiedCount) {
+          updatedCount++;
+        }
+        console.log(result, updatedCount);
       }
-      console.log(result, updatedCount);
     }
-  }
 
     if (updatedCount > 0) {
       res.json({

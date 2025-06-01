@@ -849,11 +849,13 @@ exports.increasePositionsByShelfAndDivision = async (req, res) => {
 
     if (result.modifiedCount > 0) {
       return res.json({
-        message: 'Positions decreased successfully',
+        success: true,
+        message: 'Positions increased successfully',
         modifiedCount: result.modifiedCount
       });
     } else {
       return res.json({
+        success: true,
         message: 'No positions were updated — no matching documents'
       });
     }
@@ -920,11 +922,13 @@ exports.decreasePositionsByShelfAndDivision = async (req, res) => {
     if (result.modifiedCount > 0) {
       return res.json({
         message: 'Positions decreased successfully',
-        modifiedCount: result.modifiedCount
+        modifiedCount: result.modifiedCount,
+        success: true
       });
     } else {
       return res.json({
-        message: 'No positions were updated — no matching documents'
+        message: 'No positions were updated — no matching documents',
+        success: true
       });
     }
 
