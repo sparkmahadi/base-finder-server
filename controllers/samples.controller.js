@@ -934,6 +934,75 @@ exports.decreasePositionsByShelfAndDivision = async (req, res) => {
   }
 };
 
+exports.increasePositionsByAmount = async (req, res) => {
+  console.log(`hit increasePositionsByAmount`);
+  let { shelf, division, amountToIncrease } = req.body;
+  // Convert inputs to numbers
+  shelf = Number(shelf);
+  division = Number(division);
+  amountToIncrease = Number(amountToIncrease);
+
+  console.log('increase positions for Shelf:', shelf, 'Division:', division, 'to increase:', amountToIncrease);
+
+  if (isNaN(shelf) || isNaN(division) || isNaN(amountToIncrease)) {
+    return res.status(400).json({ message: 'Invalid input types. All must be numbers.' });
+  }
+
+  try {
+    // Step 1: Normalize DB fields to ensure numeric values
+    const cursor = samplesCollection.find({
+      $or: [
+        { shelf: { $type: "string" } },
+        { division: { $type: "string" } },
+        { position: { $type: "string" } }
+      ]
+    });
+
+    for await (const doc of cursor) {
+      const numericShelf = parseInt(doc.shelf);
+      const numericDivision = parseInt(doc.division);
+      const numericPosition = parseInt(doc.position);
+
+      const update = {};
+      if (!isNaN(numericShelf)) update.shelf = numericShelf;
+      if (!isNaN(numericDivision)) update.division = numericDivision;
+      if (!isNaN(numericPosition)) update.position = numericPosition;
+
+      if (Object.keys(update).length > 0) {
+        await samplesCollection.updateOne({ _id: doc._id }, { $set: update });
+      }
+    }
+
+    // Step 2: Perform the actual position update
+    const query = {
+      shelf: shelf,
+      division: division,
+    };
+
+    const preview = await samplesCollection.find(query).toArray();
+    console.log(`Found ${preview.length} document(s) to update.`);
+
+    const result = await samplesCollection.updateMany(query, {
+      $inc: { position: amountToIncrease }
+    });
+
+    if (result.modifiedCount > 0) {
+      return res.json({
+        message: `Positions increased by ${amountToIncrease} successfully`,
+        modifiedCount: result.modifiedCount
+      });
+    } else {
+      return res.json({
+        message: 'No positions were updated — no matching documents'
+      });
+    }
+
+  } catch (err) {
+    console.error('Error while decreasing positions:', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
 const normalizeFieldsToNumbers = require('../utils/nomalizeFieldsToNumbers');
 
 exports.normalizePositions = async (req, res) => {

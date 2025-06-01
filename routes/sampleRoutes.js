@@ -48,6 +48,7 @@ router.put("/:id/take", samplesController.takeSample);
 router.put("/putback/:id", samplesController.putBackSample);
 
 router.patch("/increase-positions-by-shelf-division", samplesController.increasePositionsByShelfAndDivision)
+router.patch("/increase-positions-by-amount", samplesController.increasePositionsByAmount)
 router.patch("/decrease-positions-by-shelf-division", samplesController.decreasePositionsByShelfAndDivision)
 router.patch("/normalize-positions-in-division", samplesController.normalizePositions)
 
