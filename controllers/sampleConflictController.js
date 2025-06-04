@@ -1,174 +1,121 @@
-const { ObjectId } = require('mongodb'); // For MongoDB native driver
-const {db} = require('../db');
+const { db } = require('../db');
 
- const samplesCollection = db.collection('samples'); // Assuming your collection is named 'samples'
+const samplesCollection = db.collection('samples');
 
-// Utility function to safely parse integers
-const safeParseInt = (value) => {
-  const parsed = parseInt(value);
-  return isNaN(parsed) ? undefined : parsed;
-};
-
-/**
- * @desc Checks for samples conflicting at a given shelf, division, and position.
- * @route POST /api/samples/check-position-conflict
- * @param {Object} req.body - Contains shelf, division, and position.
- * @returns {Object} { success: true, conflict: boolean, conflictingSamples: Array }
- */
 exports.checkPositionConflicts = async (req, res) => {
-    console.log('check conflicts');
-  try {
-    const { shelf, division, position } = req.body;
-    console.log(req.body);
+  console.log('check positional conflicts');
+  const { shelf, division } = req.body;
 
-    const parsedShelf = safeParseInt(shelf);
-    const parsedDivision = safeParseInt(division);
-    const parsedPosition = safeParseInt(position);
+  // Determine if specific shelf and division are provided
+  // Includes checking for empty strings as well, as parseInt('') results in NaN.
+  const hasSpecificShelfAndDivision = shelf !== undefined && division !== undefined && shelf !== '' && division !== '';
 
-    if (parsedShelf === undefined || parsedDivision === undefined || parsedPosition === undefined) {
-      return res.status(400).json({ success: false, message: "Shelf, Division, and Position must be valid numbers." });
-    }
+  let parsedShelf, parsedDivision;
+  if (hasSpecificShelfAndDivision) {
+    parsedShelf = parseInt(shelf);
+    parsedDivision = parseInt(division);
 
-    const conflictingSamples = await samplesCollection.find({
-      shelf: parsedShelf,
-      division: parsedDivision,
-      position: parsedPosition,
-      availability: 'yes' // Only available samples cause conflicts
-    }).project({ _id: 1, style: 1, category: 1, no_of_sample: 1, sample_date: 1 }).toArray();
-
-    if (conflictingSamples.length > 0) {
-      return res.status(200).json({
-        success: true,
-        conflict: true,
-        message: "Conflicts found at this shelf, division, and position.",
-        conflictingSamples: conflictingSamples.map(sample => ({
-          ...sample,
-          _id: sample._id.toString() // Convert ObjectId to string for frontend
-        }))
+    // Validate input only if they are provided
+    if (isNaN(parsedShelf) || isNaN(parsedDivision)) {
+      return res.status(400).json({
+        message: 'Please provide valid "shelf" and "division" as numbers in the request body, or omit them to check all.',
+        success: false,
+        isConflicts: false,
       });
-    } else {
-      return res.status(200).json({ success: true, conflict: false, message: "No conflicts found." });
     }
-  } catch (error) {
-    sendErrorResponse(res, error, "Failed to check for position conflicts.");
-  } finally {
-    if (client) client.close();
+    console.log(`Checking conflicts for Shelf: ${parsedShelf}, Division: ${parsedDivision} (excluding availability: "no").`);
+  } else {
+    console.log('Checking conflicts for ALL shelves and divisions (excluding availability: "no").');
   }
-};
 
-/**
- * @desc Increase position numbers for samples at or above a given position within a shelf and division.
- * This effectively "shifts samples down" to make space.
- * @route PATCH /api/samples/increase-positions-by-shelf-division
- * @param {Object} req.body - Contains shelf, division, and currentPosition (where the new sample will go).
- * @returns {Object} { success: true, message: string, modifiedCount: number }
- */
-exports.increasePositions = async (req, res) => {
-  let client;
   try {
-    const { shelf, division, currentPosition } = req.body;
+    const pipeline = [];
 
-    const parsedShelf = safeParseInt(shelf);
-    const parsedDivision = safeParseInt(division);
-    const parsedCurrentPosition = safeParseInt(currentPosition);
+    // Stage 1: Exclude documents where availability field exists AND its value is "no"
+    pipeline.push({
+      $match: {
+        $or: [
+          { availability: { $exists: false } }, // Include documents where 'availability' field does NOT exist
+          { availability: { $ne: "no" } }       // Include documents where 'availability' field is NOT "no"
+        ]
+      }
+    });
 
-    if (parsedShelf === undefined || parsedDivision === undefined || parsedCurrentPosition === undefined) {
-      return res.status(400).json({ success: false, message: "Shelf, Division, and currentPosition must be valid numbers." });
+    // Stage 2: Conditional $match - Apply filtering if specific shelf/division is provided
+    // This filter runs BEFORE grouping, ensuring we only group relevant documents.
+    const matchConditions = {};
+    if (hasSpecificShelfAndDivision) {
+      matchConditions.shelf = parsedShelf;
+      matchConditions.division = parsedDivision;
+    }
+    // Only add $match stage if there are actual conditions to apply
+    if (Object.keys(matchConditions).length > 0) {
+      pipeline.push({
+        $match: matchConditions,
+      });
     }
 
-    client = await MongoClient.connect(DB_URI);
-    const db = client.db(DB_NAME);
-    const samplesCollection = db.collection('samples');
 
-    const result = await samplesCollection.updateMany(
-      {
-        shelf: parsedShelf,
-        division: parsedDivision,
-        position: { $gte: parsedCurrentPosition }
+    // --- CRITICAL FIX HERE: Stage 3: $group - ALWAYS group by shelf, division, and position ---
+    // This ensures _id.shelf and _id.division always exist for the $project stage.
+    pipeline.push({
+      $group: {
+        _id: {
+          shelf: "$shelf",
+          division: "$division",
+          position: "$position"
+        },
+        count: { $sum: 1 },
+        conflictingSamples: { $push: "$$ROOT" },
       },
-      { $inc: { position: 1 } } // Increment position by 1
-    );
+    });
 
-    if (result.modifiedCount > 0) {
-      res.status(200).json({ success: true, message: 'Samples shifted down successfully.', modifiedCount: result.modifiedCount });
+    // Stage 4: $match - Filter for actual duplicates (count > 1)
+    pipeline.push({
+      $match: {
+        count: { $gt: 1 },
+      },
+    });
+
+    // --- Stage 5: $project - Now shelf and division will ALWAYS come from $_id.shelf and $_id.division ---
+    pipeline.push({
+      $project: {
+        _id: 0, // Exclude the default _id from the group stage
+        shelf: "$_id.shelf",        // Always take from _id
+        division: "$_id.division",  // Always take from _id
+        conflictingPosition: "$_id.position",
+        numberOfConflicts: "$count",
+        conflictingSamples: "$conflictingSamples",
+      },
+    });
+
+    const conflicts = await samplesCollection.aggregate(pipeline).toArray();
+
+    let responseMessage;
+    if (hasSpecificShelfAndDivision) {
+      responseMessage = conflicts.length > 0
+        ? `Position conflicts found in Shelf: ${parsedShelf}, Division: ${parsedDivision} (excluding availability: "no").`
+        : `No conflicts found in Shelf: ${parsedShelf}, Division: ${parsedDivision} (excluding availability: "no").`;
     } else {
-      res.status(200).json({ success: false, message: 'No samples needed shifting or none found at/after this position.', modifiedCount: 0 });
+      responseMessage = conflicts.length > 0
+        ? 'Conflicts found across various shelves and divisions (excluding availability: "no" samples).'
+        : 'No conflicts found across all shelves and divisions (excluding availability: "no" samples).';
     }
+
+    res.json({
+      message: responseMessage,
+      isConflicts: conflicts.length > 0,
+      success: true,
+      conflicts: conflicts,
+    });
+
   } catch (error) {
-    sendErrorResponse(res, error, "Failed to shift samples down.");
-  } finally {
-    if (client) client.close();
-  }
-};
-
-/**
- * @desc Resolves conflicts based on the specified resolution type.
- * @route POST /api/samples/resolve-conflict
- * @param {string} req.body.resolutionType - 'overwrite', 'deleteSelected', 'keepOne'
- * @param {Object} req.body.data - Specific data for the resolution type
- * @returns {Object} { success: true, message: string }
- */
-exports.resolveConflicts = async (req, res) => {
-  let client;
-  try {
-    const { resolutionType, data } = req.body;
-
-    client = await MongoClient.connect(DB_URI);
-    const db = client.db(DB_NAME);
-    const samplesCollection = db.collection('samples');
-
-    let result;
-    switch (resolutionType) {
-      case 'overwrite':
-        const o_shelf = safeParseInt(data.shelf);
-        const o_division = safeParseInt(data.division);
-        const o_position = safeParseInt(data.position);
-        if (o_shelf === undefined || o_division === undefined || o_position === undefined) {
-          return res.status(400).json({ success: false, message: "Missing shelf, division, or position for overwrite." });
-        }
-        const overwriteRes = await samplesCollection.deleteMany({
-          shelf: o_shelf,
-          division: o_division,
-          position: o_position
-        });
-        result = { message: `Successfully cleared ${overwriteRes.deletedCount} existing samples for overwrite.` };
-        break;
-
-      case 'deleteSelected':
-        if (!Array.isArray(data.sampleIdsToDelete) || data.sampleIdsToDelete.length === 0) {
-          return res.status(400).json({ success: false, message: "No samples selected for deletion." });
-        }
-        // Convert string IDs back to ObjectId for MongoDB query
-        const deleteObjectIds = data.sampleIdsToDelete.map(id => new ObjectId(id));
-        const deleteRes = await samplesCollection.deleteMany({ _id: { $in: deleteObjectIds } });
-        result = { message: `Successfully deleted ${deleteRes.deletedCount} selected samples.` };
-        break;
-
-      case 'keepOne':
-        const k_shelf = safeParseInt(data.shelf);
-        const k_division = safeParseInt(data.division);
-        const k_position = safeParseInt(data.position);
-        if (!data.keepSampleId || k_shelf === undefined || k_division === undefined || k_position === undefined) {
-          return res.status(400).json({ success: false, message: "Missing sample ID or location for 'keep one'." });
-        }
-        // Convert string ID to ObjectId for MongoDB query
-        const keepObjectId = new ObjectId(data.keepSampleId);
-        const keepRes = await samplesCollection.deleteMany({
-          shelf: k_shelf,
-          division: k_division,
-          position: k_position,
-          _id: { $ne: keepObjectId } // Delete all *except* the one specified
-        });
-        result = { message: `Kept one sample and deleted ${keepRes.deletedCount} others.` };
-        break;
-
-      default:
-        return res.status(400).json({ success: false, message: "Invalid resolution type." });
-    }
-    res.status(200).json({ success: true, message: result.message });
-  } catch (error) {
-    sendErrorResponse(res, error, "Failed to resolve conflicts.");
-  } finally {
-    if (client) client.close();
+    console.error('Error checking conflicts:', error);
+    res.status(500).json({
+      message: 'Server error occurred while fetching conflicts.',
+      success: false,
+      isConflicts: false,
+      error: error.message,
+    });
   }
 };

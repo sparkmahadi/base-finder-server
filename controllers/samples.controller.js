@@ -1,1059 +1,1032 @@
 const { db } = require("../db");
 const { ObjectId } = require("mongodb");
+const normalizeFieldsToNumbers = require('../utils/nomalizeFieldsToNumbers');
 
+// Collection References
 const samplesCollection = db.collection("samples");
 const buyersCollection = db.collection("buyers");
 const takenSamplesCollection = db.collection("taken-samples");
 const deletedSamplesCollection = db.collection("deleted-samples");
 
-// Get all samples including taken ones - deprecated by mahadi
+// --- Helper Functions (Internal to Controller) ---
+
+/**
+ * Validates if a string is a valid MongoDB ObjectId.
+ * @param {string} id - The ID string to validate.
+ * @returns {boolean} - True if valid, false otherwise.
+ */
+const isValidObjectId = (id) => ObjectId.isValid(id);
+
+/**
+ * Finds a sample in either samplesCollection or takenSamplesCollection.
+ * @param {ObjectId} objectId - The ObjectId to search for.
+ * @returns {Promise<{sample: object, collectionSource: string|null}>} - An object containing the sample and its source collection, or null if not found.
+ */
+const findSampleInCollections = async (objectId) => {
+    let sample = await samplesCollection.findOne({ _id: objectId });
+    if (sample) {
+        return { sample, collectionSource: 'samplesCollection' };
+    }
+
+    sample = await takenSamplesCollection.findOne({ _id: objectId });
+    if (sample) {
+        return { sample, collectionSource: 'takenSamplesCollection' };
+    }
+
+    return { sample: null, collectionSource: null };
+};
+
+/**
+ * Normalizes 'shelf', 'division', and 'position' fields in a collection to numbers.
+ * @param {object} collection - The MongoDB collection object.
+ * @returns {Promise<number>} - The count of documents that had fields normalized.
+ * @deprecated - This should ideally be a migration script, not run on every API call.
+ */
+const ensureNumericPositionFields = async (collection) => {
+    // Given the previous code, I'll assume normalizeFieldsToNumbers does the job.
+    return await normalizeFieldsToNumbers(collection);
+};
+
+// --- GET Operations ---
+
+/**
+ * Retrieves all samples from both active and taken collections.
+ * Route: GET /api/samples/
+ */
 exports.getAllSamples = async (req, res) => {
-  console.log('GET /samples');
-  try {
-    const result1 = await samplesCollection.find().toArray();
-    const result2 = await takenSamplesCollection.find().toArray();
-    const result = [...result1, ...result2];
-    res.status(200).json({
-      success: true,
-      message: `${result.length} samples found`,
-      samples: result,
-    });
-  } catch (error) {
-    console.error('Error fetching samples:', error);
-    res.status(500).json({ success: false, message: 'Server Error' });
-  }
-};
-
-// Get all samples - deprecated by mahadi
-exports.getSamples = async (req, res) => {
-  console.log('GET /samples');
-  try {
-    const result = await samplesCollection.find().toArray();
-    res.status(200).json({
-      success: true,
-      message: `${result.length} samples found`,
-      samples: result,
-    });
-  } catch (error) {
-    console.error('Error fetching samples:', error);
-    res.status(500).json({ success: false, message: 'Server Error' });
-  }
-};
-
-exports.getSamplesByShelfAndDivision = async (req, res) => {
-  console.log('GET /samples by shelf and division');
-  const { shelf, division } = req.query;
-  const query = { shelf: parseInt(shelf), division: parseInt(division) };
-  try {
-    const result = await samplesCollection.find(query).toArray();
-    res.status(200).json({
-      success: true,
-      message: `${result.length} samples found`,
-      samples: result,
-    });
-  } catch (error) {
-    console.error('Error fetching samples:', error);
-    res.status(500).json({ success: false, message: 'Server Error' });
-  }
-};
-
-
-// Get all samples - deprecated by mahadi
-exports.getBuyers = async (req, res) => {
-  console.log('GET /samples');
-  try {
-    const result = await buyersCollection.find().toArray();
-    res.status(200).json({
-      success: true,
-      message: `${result.length} buyers found`,
-      buyers: result,
-    });
-  } catch (error) {
-    console.error('Error fetching buyers:', error);
-    res.status(500).json({ success: false, message: 'Server Error' });
-  }
-};
-
-exports.getSampleDetails = async (req, res) => {
-  console.log('GET /sampledetails');
-  const id = req.params.id;
-  console.log(id);
-  const query = { _id: new ObjectId(id) };
-  if (typeof id === "string") {
+    console.log('GET /samples (all samples)');
     try {
-      const result = await samplesCollection.findOne(query);
-      if (result) {
-        return res.status(200).json({
-          success: true,
-          message: `sample details found`,
-          sample: result,
-        });
-      } else if (!result) {
-        const result2 = await takenSamplesCollection.findOne(query);
-        if (result2) {
-          res.status(200).json({
+        const activeSamples = await samplesCollection.find().toArray();
+        const takenSamples = await takenSamplesCollection.find().toArray();
+        const allSamples = [...activeSamples, ...takenSamples];
+
+        res.status(200).json({
             success: true,
-            message: `sample details found`,
-            sample: result2,
-          });
-        }
-      } else { res.send({ success: false, message: 'Sample not found', sample: null }); }
+            message: `${allSamples.length} samples found`,
+            samples: allSamples,
+        });
+    } catch (error) {
+        console.error('Error fetching all samples:', error);
+        res.status(500).json({ success: false, message: 'Server Error occurred while fetching all samples.' });
     }
-    catch (error) {
-      console.error('Error fetching samples:', error);
-      res.json({ success: false, message: 'Server Error' });
-    }
-  }
-  else res.status(500).json({ success: false, message: 'Id is not a string' });
-}
-
-// GET /api/samples?page=1&limit=50&search=abc&taken=true
-// single collection - deprecated by mahadi
-exports.getPaginatedSamples = async (req, res) => {
-  console.log('get paginated samples');
-
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 50;
-    const skip = (page - 1) * limit;
-
-    const search = req.query.search || '';
-
-    // Copy all other query params except page, limit, and search
-    const filterParams = { ...req.query };
-    delete filterParams.page;
-    delete filterParams.limit;
-    delete filterParams.search;
-
-    const filter = {};
-
-    // ✅ Search by multiple fields
-    if (search) {
-      filter.$or = [
-        { buyer: { $regex: search, $options: 'i' } },
-        { category: { $regex: search, $options: 'i' } },
-        { style: { $regex: search, $options: 'i' } },
-        { no_of_sample: { $regex: search, $options: 'i' } },
-        { shelf: { $regex: search, $options: 'i' } },
-        { division: { $regex: search, $options: 'i' } },
-        { position: { $regex: search, $options: 'i' } },
-        { status: { $regex: search, $options: 'i' } },
-        { season: { $regex: search, $options: 'i' } },
-        { comments: { $regex: search, $options: 'i' } },
-        { added_by: { $regex: search, $options: 'i' } },
-      ];
-    }
-
-
-
-    // ✅ Apply dynamic filters (e.g. category, availability, shelf, rack, etc.)
-    Object.entries(filterParams).forEach(([key, value]) => {
-      if (value) {
-        filter[key] = { $regex: value, $options: 'i' }; // case-insensitive
-      }
-    });
-
-    console.log('Final Filter:', filter);
-
-    const samples = await samplesCollection
-      .find(filter)
-      .skip(skip)
-      .limit(limit)
-      .toArray();
-
-    const total = await samplesCollection.countDocuments(filter);
-    console.log('searched- ', search, "and found -", samples.length);
-    res.status(200).json({
-      samples,
-      total,
-      page,
-      totalPages: Math.ceil(total / limit),
-    });
-
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Failed to fetch samples' });
-  }
 };
 
+/**
+ * Retrieves sample details by ID, checking both active and taken collections.
+ * Route: GET /api/samples/:id
+ */
+exports.getSampleDetails = async (req, res) => {
+    console.log('GET /samples/:id');
+    const { id } = req.params;
 
+    if (!isValidObjectId(id)) {
+        return res.status(400).json({ success: false, message: 'Invalid sample ID' });
+    }
 
-// Get taken samples separate collection
+    try {
+        const objectId = new ObjectId(id);
+        const { sample, collectionSource } = await findSampleInCollections(objectId);
+
+        if (sample) {
+            return res.status(200).json({
+                success: true,
+                message: `Sample details found in ${collectionSource}`,
+                sample: sample,
+            });
+        } else {
+            return res.status(404).json({ success: false, message: 'Sample not found' });
+        }
+    } catch (error) {
+        console.error('Error fetching sample details:', error);
+        res.status(500).json({ success: false, message: 'Server Error occurred while fetching sample details.' });
+    }
+};
+
+/**
+ * Retrieves samples based on shelf and division.
+ * Route: GET /api/samples/get-by-shelf-and-division
+ */
+exports.getSamplesByShelfAndDivision = async (req, res) => {
+    console.log('GET /samples/get-by-shelf-and-division');
+    const { shelf, division } = req.query;
+
+    const numericShelf = parseInt(shelf);
+    const numericDivision = parseInt(division);
+
+    if (isNaN(numericShelf) || isNaN(numericDivision)) {
+        return res.status(400).json({ success: false, message: 'Invalid shelf or division provided. Must be numbers.' });
+    }
+
+    try {
+        const query = { shelf: numericShelf, division: numericDivision };
+        const result = await samplesCollection.find(query).toArray();
+
+        res.status(200).json({
+            success: true,
+            message: `${result.length} samples found for shelf ${numericShelf} and division ${numericDivision}`,
+            samples: result,
+        });
+    } catch (error) {
+        console.error('Error fetching samples by shelf and division:', error);
+        res.status(500).json({ success: false, message: 'Server Error occurred while fetching samples by shelf and division.' });
+    }
+};
+
+/**
+ * Retrieves all samples currently marked as 'taken'.
+ * Route: GET /api/samples/taken-samples
+ */
 exports.getTakenSamples = async (req, res) => {
-  console.log('GET /takensamples');
-  try {
-    const result = await takenSamplesCollection.find().toArray();
-    res.status(200).json({
-      success: true,
-      message: `${result.length} samples found`,
-      samples: result,
-    });
-  } catch (error) {
-    console.error('Error fetching samples:', error);
-    res.status(500).json({ success: false, message: 'Server Error' });
-  }
+    console.log('GET /taken-samples');
+    try {
+        const result = await takenSamplesCollection.find().toArray();
+        res.status(200).json({
+            success: true,
+            message: `${result.length} taken samples found`,
+            samples: result,
+        });
+    } catch (error) {
+        console.error('Error fetching taken samples:', error);
+        res.status(500).json({ success: false, message: 'Server Error occurred while fetching taken samples.' });
+    }
 };
 
-exports.postSample = async (req, res) => {
-  console.log('POST /samples');
-  try {
-    const { position, shelf, division, ...otherSampleData } = req.body; // Destructure position, shelf, division
-
-    const numericPosition = Number(position);
-    if (isNaN(numericPosition) || numericPosition < 1) { // Use isNaN for robustness
-      return res.status(400).json({ success: false, message: "Invalid position" });
+/**
+ * Retrieves a list of all buyers.
+ * Route: GET /api/samples/buyers
+ */
+exports.getBuyers = async (req, res) => {
+    console.log('GET /buyers');
+    try {
+        const result = await buyersCollection.find().toArray();
+        res.status(200).json({
+            success: true,
+            message: `${result.length} buyers found`,
+            buyers: result,
+        });
+    } catch (error) {
+        console.error('Error fetching buyers:', error);
+        res.status(500).json({ success: false, message: 'Server Error occurred while fetching buyers.' });
     }
-
-    // Step 1: Shift existing samples down by 1 position
-    // This efficiently updates all relevant documents in a single operation
-    await samplesCollection.updateMany(
-      {
-        shelf: shelf,
-        division: division,
-        position: { $gte: numericPosition } // Target samples at or after the new position
-      },
-      {
-        $inc: { position: 1 } // Increment their position by 1
-      }
-    );
-
-    // Step 2: Prepare the new sample with the specified position
-    const newSample = {
-      ...otherSampleData, // Include other data from req.body
-      position: numericPosition, // Assign the desired position to the new sample
-      shelf: shelf,       // Ensure shelf and division are included
-      division: division,
-      availability: "yes", // Assuming new samples are always available
-      added_at: new Date(), // Add timestamp
-      // You might also want 'added_by', 'status' etc.
-    };
-
-    // Step 3: Insert the new sample
-    const result = await samplesCollection.insertOne(newSample);
-
-    if (result.insertedId) {
-      return res.status(201).json({ success: true, message: 'Sample inserted successfully', id: result.insertedId });
-    }
-    res.status(400).json({ success: false, message: 'Failed to insert sample' });
-  } catch (error) {
-    console.error('Error inserting sample:', error);
-    res.status(500).json({ success: false, message: 'Server Error' });
-  }
 };
 
-// Upload samples from Excel
-exports.uploadSamplesFromExcel = async (req, res) => {
-  try {
-    const { samples } = req.body;
+/**
+ * Retrieves unique values for specified fields or unique combinations of multiple fields.
+ * Route: GET /api/samples/unique?fields=category
+ * Route: GET /api/samples/unique?fields=category,buyer
+ */
+exports.getUniqueFieldValues = async (req, res) => {
+    console.log('GET /samples/unique');
+    const { fields } = req.query;
 
-    if (!Array.isArray(samples) || samples.length === 0) {
-      return res.status(400).json({ message: 'No samples provided' });
+    if (!fields) {
+        return res.status(400).json({ success: false, message: "fields query parameter is required (e.g., ?fields=category or ?fields=category,buyer)" });
     }
 
-    const newSamples = samples.map((sample) => ({
-      sample_date: sample.sample_date ? new Date(sample.sample_date) : null,
-      buyer: sample.buyer || '',
-      category: sample.category || '',
-      style: sample.style || '',
-      no_of_sample: sample.no_of_sample || 0,
-      shelf: sample.shelf || 0,
-      division: sample.division || 0,
-      position: sample.position || 0,
-      status: sample.status || '',
-      season: sample.season || '',
-      comments: sample.comments || '',
-      released: sample.released ? new Date(sample.released) : null,
-      added_by: sample.added_by || 'unknown',
-      createdAt: new Date(),
-      added_at: new Date(),
-    }));
+    const fieldArray = fields.split(",").map(f => f.trim()).filter(f => f); // Trim and filter empty strings
 
-
-    await samplesCollection.insertMany(newSamples);
-
-    return res.status(201).json({ success: true, message: 'Samples uploaded successfully', count: newSamples.length });
-  } catch (err) {
-    console.error('Error uploading samples:', err);
-    return res.status(500).json({ message: 'Failed to upload samples' });
-  }
-};
-
-
-// Update an existing sample
-exports.updateSampleById = async (req, res) => {
-  console.log('hit updatesample');
-  try {
-    const sampleId = req.params.id;
-    const updatedData = req.body;
-
-    if (!ObjectId.isValid(sampleId)) {
-      return res.status(400).json({ message: 'Invalid ID' });
+    if (fieldArray.length === 0) {
+        return res.status(400).json({ success: false, message: "No valid fields provided in the query parameter." });
     }
 
-    const objectId = new ObjectId(sampleId);
-    let targetCollection = null;
-    let existingSample = await samplesCollection.findOne({ _id: objectId });
+    try {
+        if (fieldArray.length === 1) {
+            // Single field: use distinct
+            const values = await samplesCollection.distinct(fieldArray[0]);
+            return res.status(200).json({ success: true, field: fieldArray[0], values });
+        } else {
+            // Multiple fields: use aggregation for unique combinations
+            const pipeline = [
+                {
+                    $group: {
+                        _id: fieldArray.reduce((acc, field) => {
+                            acc[field] = `$${field}`;
+                            return acc;
+                        }, {}),
+                    },
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        ...fieldArray.reduce((acc, field) => {
+                            acc[field] = `$_id.${field}`;
+                            return acc;
+                        }, {}),
+                    },
+                },
+            ];
 
-    if (existingSample) {
-      targetCollection = samplesCollection;
-    } else {
-      existingSample = await takenSamplesCollection.findOne({ _id: objectId });
-      if (existingSample) {
-        targetCollection = takenSamplesCollection;
-      } else {
-        return res.json({ success: false, message: 'Sample not found in either collection' });
-      }
-    }
-
-    const updatedFields = { ...updatedData };
-    delete updatedFields._id; // Prevent _id from being updated
-
-    // Check for actual changes
-    const hasChanges = Object.keys(updatedFields).some(
-      key => JSON.stringify(existingSample[key]) !== JSON.stringify(updatedFields[key])
-    );
-
-    if (!hasChanges) {
-      return res.status(200).json({ message: 'No changes detected. Document not updated.' });
-    }
-
-    // Proceed with update
-    const updateResult = await targetCollection.updateOne(
-      { _id: objectId },
-      { $set: updatedFields }
-    );
-    if (updateResult.modifiedCount > 0) {
-      const updatedSample = await targetCollection.findOne({ _id: objectId });
-      res.status(200).json({
-        success: true,
-        message: 'Sample updated successfully',
-        updatedSample,
-      });
-    } else {
-      res.json({ success: false, message: "Failed to modify sample" })
-    }
-
-  } catch (error) {
-    console.error('Error updating sample:', error);
-    res.status(500).json({ message: 'Error updating sample', error });
-  }
-};
-
-// Controller: takeSample.js
-exports.takeSample = async (req, res) => {
-  console.log('hit take sample');
-  try {
-    const sampleId = req.params.id; // Original _id from samplesCollection
-    const { taken_by, purpose } = req.body;
-    if (!taken_by || !purpose) {
-      return res.status(400).json({ success: false, message: "Missing taken_by or purpose" });
-    }
-
-    const timestamp = new Date();
-
-    // Step 1: Fetch the sample from samplesCollection
-    const sample = await samplesCollection.findOne({ _id: new ObjectId(sampleId) });
-    if (!sample) {
-      return res.status(404).json({ success: false, message: "Sample not found in samplesCollection" });
-    }
-
-    // Prepare log entry and update sample data for taken state
-    const logEntry = {
-      taken_by,
-      purpose,
-      taken_at: timestamp
-    };
-
-    // Remove the original _id before inserting into takenSamplesCollection
-    const { _id, ...restOfSample } = sample;
-
-    const updatedSampleForTaken = {
-      ...restOfSample, // This will not include the original _id
-      last_taken_by: taken_by,
-      last_taken_at: timestamp,
-      availability: "no",
-      // Ensure taken_logs is an array, then append
-      taken_logs: [...(sample.taken_logs || []), logEntry],
-      // (Optional but Recommended) Store the original_sample_id for traceability
-      original_sample_id: new ObjectId(sampleId)
-    };
-
-    // Step 2: Insert into takenSamples collection (this will generate a NEW _id)
-    const insertResult = await takenSamplesCollection.insertOne(updatedSampleForTaken);
-    if (!insertResult.insertedId) {
-      return res.status(500).json({ success: false, message: "Failed to archive the sample" });
-    }
-    const newTakenSampleId = insertResult.insertedId; // Get the newly generated _id
-
-    // Step 3: Adjust position of samples below in the same shelf/division
-    await samplesCollection.updateMany(
-      {
-        shelf: sample.shelf,
-        division: sample.division,
-        position: { $gt: sample.position }
-      },
-      { $inc: { position: -1 } }
-    );
-    // console.log('positions updated after take'); // Keep or remove console log
-
-    // Step 4: Delete the original sample from active samples collection
-    const deleteResult = await samplesCollection.deleteOne({ _id: new ObjectId(sampleId) });
-    if (deleteResult.deletedCount === 0) {
-      // This indicates a problem: sample was inserted into taken but not deleted from main
-      return res.status(500).json({ success: false, message: "Archived the sample but failed to delete original sample" });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: `${sample.status} Sample of ${sample.style} ${sample.category}, is taken for "${purpose}"`,
-      taken_by,
-      taken_at: timestamp,
-      purpose,
-      new_sample_id: newTakenSampleId // *** CRITICAL: Return the new ID ***
-    });
-
-  } catch (err) {
-    console.error("Error in /take:", err);
-    return res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
-// Controller: putBackSample.js
-exports.putBackSample = async (req, res) => {
-  console.log('hit putback');
-  try {
-    const sampleId = req.params.id; // This is the _id from takenSamplesCollection
-    const { position, returned_by, return_purpose } = req.body; // Added return_purpose
-
-    const numericPosition = Number(position);
-    if (isNaN(numericPosition) || numericPosition < 1) { // Use isNaN for robustness
-      return res.status(400).json({ success: false, message: "Invalid position" });
-    }
-
-    // Step 1: Find the sample in takenSamplesCollection using its current _id
-    const sample = await takenSamplesCollection.findOne({ _id: new ObjectId(sampleId) });
-    if (!sample) {
-      return res.status(404).json({ success: false, message: "Sample not found in takenSamples" });
-    }
-
-    const { shelf, division } = sample; // Get shelf and division from the taken sample
-
-    // Step 2: Delete from takenSamplesCollection first
-    const deletionResult = await takenSamplesCollection.deleteOne({ _id: new ObjectId(sampleId) });
-    if (deletionResult.deletedCount === 0) {
-      return res.status(500).json({ success: false, message: "Failed to delete sample from takenSamples (might have already been returned)" });
-    }
-
-    // Step 3: Shift positions in samplesCollection for existing samples
-    await samplesCollection.updateMany(
-      { shelf, division, position: { $gte: numericPosition } },
-      { $inc: { position: 1 } }
-    );
-
-    // Step 4: Prepare and insert back into samplesCollection (this will generate a NEW _id)
-    // Exclude the current _id and original_sample_id (if present) from insertion to get a new _id
-    const { _id, original_sample_id, ...restOfSample } = sample;
-
-    const restoredSample = {
-      ...restOfSample, // This will not include the current _id from takenSamples
-      position: numericPosition,
-      availability: "yes",
-      returned_at: new Date(),
-      returned_log: [
-        ...(sample.returned_log || []),
-        {
-          returned_by,
-          purpose: return_purpose, // Use the purpose provided in the request
-          returned_at: new Date()
+            const values = await samplesCollection.aggregate(pipeline).toArray();
+            return res.status(200).json({ success: true, fields: fieldArray, combinations: values });
         }
-      ],
-      // Optionally unset last_taken_by, last_taken_at if the sample is fully "returned"
-      last_taken_by: null,
-      last_taken_at: null,
-      // If you stored an original_sample_id in the taken sample, you might want to put it here too
-      // (This will be the original ID from before it was ever taken, if it existed)
-      ...(original_sample_id && { original_sample_id: original_sample_id })
-    };
-
-    const insertResult = await samplesCollection.insertOne(restoredSample);
-    if (!insertResult.insertedId) {
-      console.log('insertion failed for put back');
-      return res.status(500).json({ success: false, message: "Insert failed" });
+    } catch (err) {
+        console.error("Error fetching unique field values:", err);
+        res.status(500).json({ success: false, message: "Server Error occurred while fetching unique field values." });
     }
-    const newPutBackSampleId = insertResult.insertedId; // Get the newly generated _id
-
-    return res.status(200).json({
-      success: true,
-      message: `Sample kept back at position ${numericPosition} on shelf ${shelf} - division ${division}`,
-      new_sample_id: newPutBackSampleId // *** CRITICAL: Return the new ID ***
-    });
-
-  } catch (err) {
-    console.error("Error in putBackSample:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
 };
 
-// Soft delete a sample
-exports.deleteSample = async (req, res) => {
-  console.log('DELETE /samples/:id');
-  const { id } = req.params;
-  const userId = req.user?.id; // Use optional chaining to safely access req.user.id
-  const username = req.user?.username; // Use optional chaining to safely access req.user.id
-  // ✅ FIX 1: Correctly convert query parameter to boolean
-  const reduceOtherPositions = req.query.reducePositions;
-  console.log(`reduceOtherPositions: ${reduceOtherPositions}`);
-
-  // ✅ Validate ObjectId
-  if (!ObjectId.isValid(id)) {
-    return res.status(400).json({ success: false, message: 'Invalid sample ID' });
-  }
-
-  try {
-    const objectId = new ObjectId(id);
-
-    const sample = await samplesCollection.findOne({ _id: objectId });
-
-    if (!sample) {
-      return res.status(404).json({ success: false, message: 'Sorry, Sample not found' }); // ✅ Use 404 for Not Found
-    }
-
-    // --- Start Position Reduction Logic (if requested) ---
-    if (reduceOtherPositions === "yes") {
-      let { shelf, division, position } = sample;
-
-      // ✅ Ensure these are parsed to numbers for logic, even if DB has them as strings initially
-      // (The normalization step below will permanently fix the DB, but parsing here ensures current operation works)
-      const numericShelf = parseInt(shelf);
-      const numericDivision = parseInt(division);
-      const numericPosition = parseInt(position);
-
-      if (isNaN(numericShelf) || isNaN(numericDivision) || isNaN(numericPosition)) {
-        // This case implies a corrupt sample. Suggest logging and perhaps not proceeding with reduction.
-        console.warn(`Sample ${id} has non-numeric shelf, division, or position. Skipping position reduction.`);
-        // You might want to return an error here, or just skip the reduction and proceed with deletion.
-        // For now, let's proceed with deletion but log the warning.
-        // return res.status(400).json({ success: false, message: 'Sample location data is invalid. Cannot reduce positions.' });
-      } else {
-        console.log('Decrease positions for Shelf:', numericShelf, 'Division:', numericDivision, 'Above position:', numericPosition);
-
-        try {
-          // Step 1: Normalize DB fields (move this to a separate, less frequent script if database is large,
-          // or run it once during migration. For smaller collections, it's okay here but less efficient if run often)
-          // This block can be removed if you are certain all your 'shelf', 'division', 'position' fields are numbers.
-          const stringNumericFieldsCursor = samplesCollection.find({
-            $or: [
-              { shelf: { $type: "string" } },
-              { division: { $type: "string" } },
-              { position: { $type: "string" } }
-            ]
-          });
-
-          for await (const doc of stringNumericFieldsCursor) {
-            const update = {};
-            const parsedShelf = parseInt(doc.shelf);
-            const parsedDivision = parseInt(doc.division);
-            const parsedPosition = parseInt(doc.position);
-
-            if (!isNaN(parsedShelf) && typeof doc.shelf === 'string') update.shelf = parsedShelf;
-            if (!isNaN(parsedDivision) && typeof doc.division === 'string') update.division = parsedDivision;
-            if (!isNaN(parsedPosition) && typeof doc.position === 'string') update.position = parsedPosition;
-
-            if (Object.keys(update).length > 0) {
-              await samplesCollection.updateOne({ _id: doc._id }, { $set: update });
-              console.log(`Normalized fields for doc ${doc._id}: ${JSON.stringify(update)}`);
-            }
-          }
-
-          // Step 2: Perform the actual position update
-          const query = {
-            shelf: numericShelf,     // Use the parsed numeric values
-            division: numericDivision, // Use the parsed numeric values
-            position: { $gt: numericPosition } // Use the parsed numeric value
-          };
-
-          const preview = await samplesCollection.find(query).toArray();
-          console.log(`Found ${preview.length} document(s) to update for position decrease.`);
-
-          const result = await samplesCollection.updateMany(query, {
-            $inc: { position: -1 }
-          });
-
-          if (result.modifiedCount > 0) {
-            console.log(`Successfully decreased positions for ${result.modifiedCount} document(s).`);
-          } else {
-            console.log('No positions were updated — no matching documents for decrease.');
-          }
-
-        } catch (err) {
-          console.error('Error while decreasing positions:', err);
-          // ✅ Do NOT send a response here. Just log and let the main handler proceed to delete the sample.
-          // This specific error might mean positions aren't adjusted, but the sample can still be deleted.
-          // If you *must* block deletion due to this, then return here, but remember to ensure no double responses.
-        }
-      }
-    }
-    // --- End Position Reduction Logic ---
-
-    // ✅ Perform sample deletion ONLY AFTER position reduction (if any) is attempted.
-    await deletedSamplesCollection.insertOne({
-      ...sample,
-      deletedByUserId: userId, // Ensure userId is available, otherwise this might be null/undefined
-      deletedBy: username, // Ensure userId is available, otherwise this might be null/undefined
-      deletedAt: new Date(),
-    });
-
-    const deleteResult = await samplesCollection.deleteOne({ _id: objectId });
-
-    if (deleteResult.deletedCount === 0) {
-      // This case implies sample was removed by another process right before deleteOne.
-      return res.status(404).json({ success: false, message: 'Sample not found for final deletion (might have been deleted concurrently).' });
-    }
-
-    // ✅ Single point of success response
-    res.status(200).json({ success: true, message: `Sample: ${id} deleted and moved to recycle bin` });
-
-  } catch (error) {
-    console.error('Error in deleteSample controller:', error); // More generic catch for unexpected errors
-    res.status(500).json({ success: false, message: 'Server Error occurred during sample deletion.' });
-  }
-};
-
-// Permanently delete a sample
-exports.deleteSamplePermanently = async (req, res) => {
-  console.log('Final DELETE /samples/:id');
-  const { id } = req.params;
-  console.log(id);
-  // ✅ Validate ObjectId
-  if (!ObjectId.isValid(id)) {
-    return res.status(400).json({ success: false, message: 'Invalid sample ID' });
-  }
-
-  try {
-    const objectId = new ObjectId(id);
-
-    const sample = await deletedSamplesCollection.findOne({ _id: objectId });
-
-    if (!sample) {
-      return res.status(404).json({ success: false, message: 'Sorry, Sample not found' }); // ✅ Use 404 for Not Found
-    }
-
-    const deleteResult = await deletedSamplesCollection.deleteOne({ _id: objectId });
-
-    if (deleteResult.deletedCount === 0) {
-      // This case implies sample was removed by another process right before deleteOne.
-      return res.status(404).json({ success: false, message: 'Sample not found for final deletion (might have been deleted concurrently).' });
-    }
-
-    // ✅ Single point of success response
-    res.status(200).json({ success: true, message: `Sample: ${id} deleted permanently` });
-
-  } catch (error) {
-    console.error('Error in deleteSample controller:', error); // More generic catch for unexpected errors
-    res.status(500).json({ success: false, message: 'Server Error occurred during sample deletion.' });
-  }
-};
-
-// Get deleted samples
-exports.getDeletedSamples = async (req, res) => {
-  console.log('GET /deleted-samples');
-  try {
-    const result = await deletedSamplesCollection.find().toArray();
-    res.status(200).json({
-      success: true,
-      message: `${result.length} samples found`,
-      samples: result,
-    });
-  } catch (error) {
-    console.error('Error fetching deleted samples:', error);
-    res.status(500).json({ success: false, message: 'Server Error' });
-  }
-};
-
+/**
+ * Checks if a specific shelf, division, and position is available.
+ * Route: GET /api/samples/check-position-availability
+ * need when restoring a sample from soft deleted
+ */
 exports.checkPositionAvailability = async (req, res) => {
-  console.log('hit position check');
-  const { shelf, division, position } = req.query;
-  console.log(shelf, division, position);
-  if (shelf && division && position) {
+    console.log('GET /samples/check-position-availability');
+    const { shelf, division, position } = req.query;
+
     const parsedShelf = parseInt(shelf);
     const parsedDivision = parseInt(division);
     const parsedPosition = parseInt(position);
 
-    if (!parsedShelf || !parsedDivision || !parsedPosition) {
-      return res.send({ success: false, message: "Data cannot be parsed. Send a valid combination" })
+    if (isNaN(parsedShelf) || isNaN(parsedDivision) || isNaN(parsedPosition)) {
+        return res.status(400).json({ success: false, message: "Invalid shelf, division, or position. All must be numbers." });
     }
-    const query = { shelf: parsedShelf, division: parsedDivision, position: parsedPosition, }
-    const currentPositionHolders = await samplesCollection.find(query).toArray();
-    console.log(currentPositionHolders);
-    if (currentPositionHolders?.length > 0) {
-      return res.status(200).json({
-        success: true,
-        isPositionEmpty: false,
-        message: `Total ${currentPositionHolders.length} sample is found in position ${parsedPosition}`,
-        currentSamples: currentPositionHolders
-      });
-    }
-    else {
-      return res.status(200).json({
-        success: true,
-        isPositionEmpty: true,
-        message: `Position is empty. You can place`,
-      });
-    }
-  } else {
-    res.send({ success: false, message: "Valid Position is not found" })
-  }
-}
 
-// Restore a deleted sample
-exports.restoreSample = async (req, res) => {
-  console.log('PUT /deleted-samples/restore/:id');
-  const { id } = req.params;
-  const { position, restored_by } = req.body;
-
-  if (position && restored_by) {
     try {
-      const deletedSample = await deletedSamplesCollection.findOne({ _id: new ObjectId(id) });
+        const query = { shelf: parsedShelf, division: parsedDivision, position: parsedPosition };
+        const currentPositionHolders = await samplesCollection.find(query).toArray();
 
-      if (!deletedSample) {
-        return res.status(404).json({ success: false, message: 'Deleted sample not found' });
-      }
+        if (currentPositionHolders?.length > 0) {
+            return res.status(200).json({
+                success: true,
+                isPositionEmpty: false,
+                message: `Total ${currentPositionHolders.length} sample(s) found at position ${parsedPosition} on shelf ${parsedShelf}, division ${parsedDivision}.`,
+                currentSamples: currentPositionHolders
+            });
+        } else {
+            return res.status(200).json({
+                success: true,
+                isPositionEmpty: true,
+                message: `Position ${parsedPosition} on shelf ${parsedShelf}, division ${parsedDivision} is empty.`,
+            });
+        }
+    } catch (error) {
+        console.error('Error checking position availability:', error);
+        res.status(500).json({ success: false, message: 'Server Error occurred while checking position availability.' });
+    }
+};
 
-      // Destructure and prepare data for restoration
-      // Ensure that 'sampleData' doesn't contain '_id' or 'position' from the deleted document
-      const { _id: deletedSampleId, position: deletedSamplePosition, ...sampleDataToRestore } = deletedSample;
+/**
+ * Retrieves all deleted samples (from the recycle bin).
+ * Route: GET /api/samples/deleted-samples
+ */
+exports.getDeletedSamples = async (req, res) => {
+    console.log('GET /deleted-samples');
+    try {
+        const result = await deletedSamplesCollection.find().toArray();
+        res.status(200).json({
+            success: true,
+            message: `${result.length} deleted samples found`,
+            samples: result,
+        });
+    } catch (error) {
+        console.error('Error fetching deleted samples:', error);
+        res.status(500).json({ success: false, message: 'Server Error occurred while fetching deleted samples.' });
+    }
+};
 
-      // Prepare the data to be inserted into the samples collection
-      const restoringData = { ...sampleDataToRestore, restored_by, position }; // Use the new position from req.body
+// --- POST Operations ---
 
-      await samplesCollection.insertOne(restoringData);
-      await deletedSamplesCollection.deleteOne({ _id: new ObjectId(id) });
+/**
+ * Creates a new sample, shifting existing samples down if the position is already occupied.
+ * Route: POST /api/samples/
+ */
+exports.postSample = async (req, res) => {
+    console.log('POST /samples');
+    try {
+        const { position, shelf, division, ...otherSampleData } = req.body;
 
-      res.status(200).json({ success: true, message: 'Sample restored successfully' });
+        const numericPosition = Number(position);
+        const numericShelf = Number(shelf);
+        const numericDivision = Number(division);
+
+        if (isNaN(numericPosition) || numericPosition < 1 || isNaN(numericShelf) || isNaN(numericDivision)) {
+            return res.status(400).json({ success: false, message: "Invalid position, shelf, or division. Ensure they are valid numbers and position is positive." });
+        }
+
+        // Step 1: Shift existing samples down by 1 position (if applicable)
+        await samplesCollection.updateMany(
+            {
+                shelf: numericShelf,
+                division: numericDivision,
+                position: { $gte: numericPosition }
+            },
+            {
+                $inc: { position: 1 }
+            }
+        );
+
+        // Step 2: Prepare and insert the new sample
+        const newSample = {
+            ...otherSampleData,
+            position: numericPosition,
+            shelf: numericShelf,
+            division: numericDivision,
+            availability: "yes", // Assuming new samples are always available
+            added_at: new Date(),
+            // Consider adding 'added_by' from req.user if applicable
+        };
+
+        const result = await samplesCollection.insertOne(newSample);
+
+        if (result.insertedId) {
+            return res.status(201).json({ success: true, message: 'Sample inserted successfully', id: result.insertedId });
+        }
+        res.status(500).json({ success: false, message: 'Failed to insert sample into the database.' });
+    } catch (error) {
+        console.error('Error inserting sample:', error);
+        res.status(500).json({ success: false, message: 'Server Error occurred during sample insertion.' });
+    }
+};
+
+/**
+ * Uploads multiple samples from an Excel file (expects an array of sample objects in req.body).
+ * Route: POST /api/samples/upload-excel
+ */
+exports.uploadSamplesFromExcel = async (req, res) => {
+    console.log('POST /samples/upload-excel');
+    try {
+        const { samples } = req.body;
+
+        if (!Array.isArray(samples) || samples.length === 0) {
+            return res.status(400).json({ success: false, message: 'No samples array provided or array is empty.' });
+        }
+
+        const samplesToInsert = samples.map((sample) => ({
+            sample_date: sample.sample_date ? new Date(sample.sample_date) : null,
+            buyer: sample.buyer || '',
+            category: sample.category || '',
+            style: sample.style || '',
+            no_of_sample: Number(sample.no_of_sample) || 0, // Ensure numeric
+            shelf: Number(sample.shelf) || 0, // Ensure numeric
+            division: Number(sample.division) || 0, // Ensure numeric
+            position: Number(sample.position) || 0, // Ensure numeric
+            status: sample.status || '',
+            season: sample.season || '',
+            comments: sample.comments || '',
+            released: sample.released ? new Date(sample.released) : null,
+            added_by: sample.added_by || (req.user?.username || 'unknown'), // Use req.user if available
+            createdAt: new Date(),
+            added_at: new Date(),
+        }));
+
+
+        const insertResult = await samplesCollection.insertMany(samplesToInsert);
+
+        return res.status(201).json({
+            success: true,
+            message: `Successfully uploaded ${insertResult.insertedCount} samples from Excel.`,
+            count: insertResult.insertedCount
+        });
+    } catch (err) {
+        console.error('Error uploading samples from Excel:', err);
+        return res.status(500).json({ success: false, message: 'Server Error occurred during Excel upload.' });
+    }
+};
+
+// --- PUT/PATCH Operations (Update) ---
+
+/**
+ * Updates an existing sample by ID, checking both active and taken collections.
+ * Route: PUT /api/samples/:id
+ */
+exports.updateSampleById = async (req, res) => {
+    console.log('PUT /samples/:id');
+    const { id } = req.params;
+    const updatedData = req.body;
+
+    if (!isValidObjectId(id)) {
+        return res.status(400).json({ success: false, message: 'Invalid sample ID' });
+    }
+
+    try {
+        const objectId = new ObjectId(id);
+        const { sample: existingSample, collectionSource } = await findSampleInCollections(objectId);
+
+        if (!existingSample) {
+            return res.status(404).json({ success: false, message: 'Sample not found in either active or taken samples.' });
+        }
+
+        const targetCollection = collectionSource === 'samplesCollection' ? samplesCollection : takenSamplesCollection;
+
+        const updatedFields = { ...updatedData };
+        delete updatedFields._id; // Prevent _id from being updated
+
+        // Check for actual changes to avoid unnecessary updates
+        const hasChanges = Object.keys(updatedFields).some(
+            key => JSON.stringify(existingSample[key]) !== JSON.stringify(updatedFields[key])
+        );
+
+        if (!hasChanges) {
+            return res.status(200).json({ success: true, message: 'No changes detected. Sample not updated.' });
+        }
+
+        const updateResult = await targetCollection.updateOne(
+            { _id: objectId },
+            { $set: updatedFields }
+        );
+
+        if (updateResult.modifiedCount > 0) {
+            const updatedSample = await targetCollection.findOne({ _id: objectId });
+            return res.status(200).json({
+                success: true,
+                message: 'Sample updated successfully',
+                updatedSample,
+            });
+        } else {
+            // This case should ideally not be hit if hasChanges was true,
+            // but good for robustness if underlying data changes right before update.
+            return res.status(500).json({ success: false, message: "Failed to modify sample, or no matching document found to update." });
+        }
 
     } catch (error) {
-      console.error('Error restoring sample:', error);
-      res.status(500).json({ success: false, message: 'Server Error' });
+        console.error('Error updating sample by ID:', error);
+        res.status(500).json({ success: false, message: 'Server Error occurred while updating sample.' });
     }
-  } else {
-    res.status(400).json({ success: false, message: "Position or restored_by is not found in the request body." }); // Changed status to 400 for bad request
-  }
 };
 
-// GET /api/samples/unique?fields=category
-// Returns unique values of one field.
+/**
+ * Moves a sample from the active collection to the taken collection,
+ * and adjusts positions in the active collection.
+ * Route: PUT /api/samples/:id/take
+ */
+exports.takeSample = async (req, res) => {
+    console.log('PUT /samples/:id/take');
+    const sampleId = req.params.id;
+    const { taken_by, purpose } = req.body;
 
-// GET /api/samples/unique?fields=category,buyer
-// Returns unique combinations of multiple fields.
-
-exports.getUniqueFieldValues = async (req, res) => {
-  console.log('hit unique fvalues');
-  const { fields } = req.query;
-
-  if (!fields) {
-    return res.status(400).json({ success: false, message: "fields query parameter is required" });
-  }
-
-  const fieldArray = fields.split(",").map(f => f.trim());
-
-  try {
-    if (fieldArray.length === 1) {
-      // Single field: use distinct
-      const values = await samplesCollection.distinct(fieldArray[0]);
-      return res.status(200).json({ success: true, field: fieldArray[0], values });
-    } else {
-      // Multiple fields: use aggregation
-      const pipeline = [
-        {
-          $group: {
-            _id: fieldArray.reduce((acc, field) => {
-              acc[field] = `$${field}`;
-              return acc;
-            }, {}),
-          },
-        },
-        {
-          $project: {
-            _id: 0,
-            ...fieldArray.reduce((acc, field) => {
-              acc[field] = `$_id.${field}`;
-              return acc;
-            }, {}),
-          },
-        },
-      ];
-
-      const values = await samplesCollection.aggregate(pipeline).toArray();
-
-      return res.status(200).json({ success: true, fields: fieldArray, combinations: values });
+    if (!taken_by || !purpose) {
+        return res.status(400).json({ success: false, message: "Missing 'taken_by' or 'purpose' in request body." });
     }
-  } catch (err) {
-    console.error("Error:", err);
-    res.status(500).json({ success: false, message: "Internal server error" });
-  }
+    if (!isValidObjectId(sampleId)) {
+        return res.status(400).json({ success: false, message: 'Invalid sample ID' });
+    }
+
+    try {
+        const objectId = new ObjectId(sampleId);
+        // Step 1: Fetch the sample from samplesCollection
+        const sample = await samplesCollection.findOne({ _id: objectId });
+        if (!sample) {
+            return res.status(404).json({ success: false, message: "Sample not found in active samples collection. It might be already taken or doesn't exist." });
+        }
+
+        const timestamp = new Date();
+        const logEntry = {
+            taken_by,
+            purpose,
+            taken_at: timestamp
+        };
+
+        // Remove the original _id before inserting into takenSamplesCollection
+        const { _id, ...restOfSample } = sample;
+
+        const updatedSampleForTaken = {
+            ...restOfSample,
+            last_taken_by: taken_by,
+            last_taken_at: timestamp,
+            availability: "no",
+            taken_logs: [...(sample.taken_logs || []), logEntry],
+            original_sample_id: objectId // Store the original ID for traceability
+        };
+
+        // Step 2: Insert into takenSamples collection (this will generate a NEW _id)
+        const insertResult = await takenSamplesCollection.insertOne(updatedSampleForTaken);
+        if (!insertResult.insertedId) {
+            return res.status(500).json({ success: false, message: "Failed to archive the sample to taken samples." });
+        }
+        const newTakenSampleId = insertResult.insertedId;
+
+        // Step 3: Adjust position of samples below in the same shelf/division
+        await samplesCollection.updateMany(
+            {
+                shelf: sample.shelf,
+                division: sample.division,
+                position: { $gt: sample.position }
+            },
+            { $inc: { position: -1 } }
+        );
+
+        // Step 4: Delete the original sample from active samples collection
+        const deleteResult = await samplesCollection.deleteOne({ _id: objectId });
+        if (deleteResult.deletedCount === 0) {
+            // This indicates a problem: sample was inserted into taken but not deleted from main
+            // Log this as a critical error for manual intervention
+            console.error(`CRITICAL ERROR: Sample ${sampleId} moved to taken, but failed to delete from active. Manual intervention needed.`);
+            return res.status(500).json({ success: false, message: "Sample archived but failed to remove original. Contact support." });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: `Sample ${sample.style} (${sample.category}) taken by ${taken_by} for "${purpose}".`,
+            taken_by,
+            taken_at: timestamp,
+            purpose,
+            new_taken_sample_id: newTakenSampleId
+        });
+
+    } catch (err) {
+        console.error("Error in takeSample:", err);
+        return res.status(500).json({ success: false, message: "Server error occurred while taking sample." });
+    }
 };
 
+/**
+ * Moves a sample from the taken collection back to the active collection,
+ * and adjusts positions in the active collection.
+ * Route: PUT /api/samples/putback/:id
+ */
+exports.putBackSample = async (req, res) => {
+    console.log('PUT /samples/putback/:id');
+    const sampleId = req.params.id; // This is the _id from takenSamplesCollection
+    const { position, returned_by, return_purpose } = req.body;
 
+    const numericPosition = Number(position);
+
+    if (!isValidObjectId(sampleId) || isNaN(numericPosition) || numericPosition < 1 || !returned_by) {
+        return res.status(400).json({ success: false, message: "Invalid sample ID, position, or missing 'returned_by'." });
+    }
+
+    try {
+        const objectId = new ObjectId(sampleId);
+        // Step 1: Find the sample in takenSamplesCollection using its current _id
+        const sample = await takenSamplesCollection.findOne({ _id: objectId });
+        if (!sample) {
+            return res.status(404).json({ success: false, message: "Sample not found in taken samples collection." });
+        }
+
+        const { shelf, division } = sample;
+
+        // Step 2: Delete from takenSamplesCollection first
+        const deletionResult = await takenSamplesCollection.deleteOne({ _id: objectId });
+        if (deletionResult.deletedCount === 0) {
+            return res.status(500).json({ success: false, message: "Failed to remove sample from taken samples (might have already been returned or deleted concurrently)." });
+        }
+
+        // Step 3: Shift positions in samplesCollection for existing samples at or after the new position
+        await samplesCollection.updateMany(
+            { shelf, division, position: { $gte: numericPosition } },
+            { $inc: { position: 1 } }
+        );
+
+        // Step 4: Prepare and insert back into samplesCollection (this will generate a NEW _id)
+        const { _id, original_sample_id, taken_logs, ...restOfSample } = sample; // Exclude _id and possibly original_sample_id, taken_logs from the direct copy
+
+        const restoredSample = {
+            ...restOfSample,
+            position: numericPosition,
+            availability: "yes",
+            returned_at: new Date(),
+            returned_log: [
+                ...(sample.returned_log || []),
+                {
+                    returned_by,
+                    purpose: return_purpose || 'Not specified',
+                    returned_at: new Date()
+                }
+            ],
+            last_taken_by: null, // Clear last taken info
+            last_taken_at: null,
+            // If original_sample_id was tracked, we might want to keep it or use it as the new _id if possible,
+            // but for simplicity and new position logic, a new _id is often generated.
+            // If you want to reuse the original ID, you'd need a more complex strategy.
+            // For now, it will be a new ID unless explicitly set.
+        };
+
+        const insertResult = await samplesCollection.insertOne(restoredSample);
+        if (!insertResult.insertedId) {
+            console.error('Insertion failed when putting sample back.');
+            return res.status(500).json({ success: false, message: "Failed to insert sample back into active samples." });
+        }
+        const newPutBackSampleId = insertResult.insertedId;
+
+        return res.status(200).json({
+            success: true,
+            message: `Sample successfully put back at position ${numericPosition} on shelf ${shelf} - division ${division}.`,
+            new_sample_id: newPutBackSampleId
+        });
+
+    } catch (err) {
+        console.error("Error in putBackSample:", err);
+        res.status(500).json({ success: false, message: "Server error occurred while putting sample back." });
+    }
+};
+
+/**
+ * Restores a deleted sample from the recycle bin back to the active samples collection.
+ * Route: PUT /api/samples/deleted-samples/restore/:id
+ */
+exports.restoreSample = async (req, res) => {
+    console.log('PUT /deleted-samples/restore/:id');
+    const { id } = req.params;
+    const { position, restored_by } = req.body;
+
+    if (!isValidObjectId(id) || !position || !restored_by) {
+        return res.status(400).json({ success: false, message: "Invalid ID, missing 'position' or 'restored_by' in request body." });
+    }
+
+    const numericPosition = Number(position);
+    if (isNaN(numericPosition) || numericPosition < 1) {
+        return res.status(400).json({ success: false, message: "Invalid position. Must be a positive number." });
+    }
+
+    try {
+        const objectId = new ObjectId(id);
+        const deletedSample = await deletedSamplesCollection.findOne({ _id: objectId });
+
+        if (!deletedSample) {
+            return res.status(404).json({ success: false, message: 'Deleted sample not found in recycle bin.' });
+        }
+
+        // Check if the target position is available before restoring
+        const existingSampleAtPosition = await samplesCollection.findOne({
+            shelf: deletedSample.shelf,
+            division: deletedSample.division,
+            position: numericPosition
+        });
+
+        if (existingSampleAtPosition) {
+            // Option 1: Prevent restore and ask user to choose another position
+            // return res.status(409).json({ success: false, message: 'Position already occupied by another sample. Please choose a different position.' });
+
+            // Option 2 (as per postSample logic): Shift existing samples to make space
+            await samplesCollection.updateMany(
+                {
+                    shelf: deletedSample.shelf,
+                    division: deletedSample.division,
+                    position: { $gte: numericPosition }
+                },
+                { $inc: { position: 1 } }
+            );
+            console.log(`Shifted existing samples to make space for restored sample at position ${numericPosition}.`);
+        }
+
+
+        // Destructure and prepare data for restoration
+        const { _id: deletedSampleId, ...sampleDataToRestore } = deletedSample; // Exclude the _id from the deleted document
+
+        // Prepare the data to be inserted into the samples collection
+        const restoringData = {
+            ...sampleDataToRestore,
+            position: numericPosition, // Use the new position from req.body
+            availability: "yes",
+            restored_by,
+            restored_at: new Date(),
+            // Remove deletedBy/deletedAt from the restored document
+            deletedByUserId: null,
+            deletedBy: null,
+            deletedAt: null,
+        };
+
+        const insertResult = await samplesCollection.insertOne(restoringData);
+        if (!insertResult.insertedId) {
+            return res.status(500).json({ success: false, message: "Failed to insert sample back into active samples." });
+        }
+
+        await deletedSamplesCollection.deleteOne({ _id: objectId }); // Delete from recycle bin after successful restoration
+
+        res.status(200).json({
+            success: true,
+            message: `Sample restored successfully to position ${numericPosition} on shelf ${restoringData.shelf}, division ${restoringData.division}.`
+        });
+
+    } catch (error) {
+        console.error('Error restoring sample:', error);
+        res.status(500).json({ success: false, message: 'Server Error occurred during sample restoration.' });
+    }
+};
+
+/**
+ * Increases positions of samples above a certain point in a given shelf and division.
+ * This is primarily for making space.
+ * Route: PATCH /api/samples/increase-positions-by-shelf-division
+ */
 exports.increasePositionsByShelfAndDivision = async (req, res) => {
-  let { shelf, division, currentPosition } = req.body;
+    console.log('PATCH /samples/increase-positions-by-shelf-division');
+    let { shelf, division, currentPosition } = req.body;
 
-  // Convert inputs to numbers
-  shelf = Number(shelf);
-  division = Number(division);
-  currentPosition = Number(currentPosition);
+    const numericShelf = Number(shelf);
+    const numericDivision = Number(division);
+    const numericCurrentPosition = Number(currentPosition);
 
-  console.log('Decrease positions for Shelf:', shelf, 'Division:', division, 'Above position:', currentPosition);
-
-  if (isNaN(shelf) || isNaN(division) || isNaN(currentPosition)) {
-    return res.status(400).json({ message: 'Invalid input types. All must be numbers.' });
-  }
-
-  try {
-    // Step 1: Normalize DB fields to ensure numeric values
-    const cursor = samplesCollection.find({
-      $or: [
-        { shelf: { $type: "string" } },
-        { division: { $type: "string" } },
-        { position: { $type: "string" } }
-      ]
-    });
-
-    for await (const doc of cursor) {
-      const numericShelf = parseInt(doc.shelf);
-      const numericDivision = parseInt(doc.division);
-      const numericPosition = parseInt(doc.position);
-
-      const update = {};
-      if (!isNaN(numericShelf)) update.shelf = numericShelf;
-      if (!isNaN(numericDivision)) update.division = numericDivision;
-      if (!isNaN(numericPosition)) update.position = numericPosition;
-
-      if (Object.keys(update).length > 0) {
-        await samplesCollection.updateOne({ _id: doc._id }, { $set: update });
-      }
+    if (isNaN(numericShelf) || isNaN(numericDivision) || isNaN(numericCurrentPosition)) {
+        return res.status(400).json({ success: false, message: 'Invalid input types. Shelf, division, and currentPosition must be numbers.' });
     }
 
-    // Step 2: Perform the actual position update
-    const query = {
-      shelf: shelf,
-      division: division,
-      position: { $gt: currentPosition }
-    };
+    try {
+        // Ensure fields are numeric (using your utility) - this can be heavy if run often
+        await ensureNumericPositionFields(samplesCollection);
 
-    const preview = await samplesCollection.find(query).toArray();
-    console.log(`Found ${preview.length} document(s) to update.`);
+        const query = {
+            shelf: numericShelf,
+            division: numericDivision,
+            position: { $gte: numericCurrentPosition } // Affects samples at or greater than the given position
+        };
 
-    const result = await samplesCollection.updateMany(query, {
-      $inc: { position: 1 }
-    });
+        const result = await samplesCollection.updateMany(query, {
+            $inc: { position: 1 }
+        });
 
-    if (result.modifiedCount > 0) {
-      return res.json({
-        success: true,
-        message: 'Positions increased successfully',
-        modifiedCount: result.modifiedCount
-      });
-    } else {
-      return res.json({
-        success: true,
-        message: 'No positions were updated — no matching documents'
-      });
+        if (result.modifiedCount > 0) {
+            return res.status(200).json({
+                success: true,
+                message: `Positions increased by 1 for ${result.modifiedCount} document(s) on shelf ${numericShelf}, division ${numericDivision} above position ${numericCurrentPosition}.`,
+                modifiedCount: result.modifiedCount
+            });
+        } else {
+            return res.status(200).json({
+                success: true,
+                message: 'No positions were updated — no matching documents for increase.',
+                modifiedCount: 0
+            });
+        }
+    } catch (err) {
+        console.error('Error while increasing positions by shelf and division:', err);
+        return res.status(500).json({ success: false, message: 'Server error occurred during position increase.' });
     }
-
-  } catch (err) {
-    console.error('Error while decreasing positions:', err);
-    return res.status(500).json({ message: 'Server error' });
-  }
-}
-
-exports.decreasePositionsByShelfAndDivision = async (req, res) => {
-  let { shelf, division, currentPosition } = req.body;
-
-  // Convert inputs to numbers
-  shelf = Number(shelf);
-  division = Number(division);
-  currentPosition = Number(currentPosition);
-
-  console.log('Decrease positions for Shelf:', shelf, 'Division:', division, 'Above position:', currentPosition);
-
-  if (isNaN(shelf) || isNaN(division) || isNaN(currentPosition)) {
-    return res.status(400).json({ message: 'Invalid input types. All must be numbers.' });
-  }
-
-  try {
-    // Step 1: Normalize DB fields to ensure numeric values
-    const cursor = samplesCollection.find({
-      $or: [
-        { shelf: { $type: "string" } },
-        { division: { $type: "string" } },
-        { position: { $type: "string" } }
-      ]
-    });
-
-    for await (const doc of cursor) {
-      const numericShelf = parseInt(doc.shelf);
-      const numericDivision = parseInt(doc.division);
-      const numericPosition = parseInt(doc.position);
-
-      const update = {};
-      if (!isNaN(numericShelf)) update.shelf = numericShelf;
-      if (!isNaN(numericDivision)) update.division = numericDivision;
-      if (!isNaN(numericPosition)) update.position = numericPosition;
-
-      if (Object.keys(update).length > 0) {
-        await samplesCollection.updateOne({ _id: doc._id }, { $set: update });
-      }
-    }
-
-    // Step 2: Perform the actual position update
-    const query = {
-      shelf: shelf,
-      division: division,
-      position: { $gt: currentPosition }
-    };
-
-    const preview = await samplesCollection.find(query).toArray();
-    console.log(`Found ${preview.length} document(s) to update.`);
-
-    const result = await samplesCollection.updateMany(query, {
-      $inc: { position: -1 }
-    });
-
-    if (result.modifiedCount > 0) {
-      return res.json({
-        message: 'Positions decreased successfully',
-        modifiedCount: result.modifiedCount,
-        success: true
-      });
-    } else {
-      return res.json({
-        message: 'No positions were updated — no matching documents',
-        success: true
-      });
-    }
-
-  } catch (err) {
-    console.error('Error while decreasing positions:', err);
-    return res.status(500).json({ message: 'Server error' });
-  }
 };
 
+/**
+ * Decreases positions of samples above a certain point in a given shelf and division.
+ * This is primarily for closing gaps.
+ * Route: PATCH /api/samples/decrease-positions-by-shelf-division
+ */
+exports.decreasePositionsByShelfAndDivision = async (req, res) => {
+    console.log('PATCH /samples/decrease-positions-by-shelf-division');
+    let { shelf, division, currentPosition } = req.body;
+
+    const numericShelf = Number(shelf);
+    const numericDivision = Number(division);
+    const numericCurrentPosition = Number(currentPosition);
+
+    if (isNaN(numericShelf) || isNaN(numericDivision) || isNaN(numericCurrentPosition)) {
+        return res.status(400).json({ success: false, message: 'Invalid input types. Shelf, division, and currentPosition must be numbers.' });
+    }
+
+    try {
+        // Ensure fields are numeric (using your utility) - this can be heavy if run often
+        await ensureNumericPositionFields(samplesCollection);
+
+        const query = {
+            shelf: numericShelf,
+            division: numericDivision,
+            position: { $gt: numericCurrentPosition } // Affects samples strictly greater than the given position
+        };
+
+        const result = await samplesCollection.updateMany(query, {
+            $inc: { position: -1 }
+        });
+
+        if (result.modifiedCount > 0) {
+            return res.status(200).json({
+                success: true,
+                message: `Positions decreased by 1 for ${result.modifiedCount} document(s) on shelf ${numericShelf}, division ${numericDivision} above position ${numericCurrentPosition}.`,
+                modifiedCount: result.modifiedCount
+            });
+        } else {
+            return res.status(200).json({
+                success: true,
+                message: 'No positions were updated — no matching documents for decrease.',
+                modifiedCount: 0
+            });
+        }
+    } catch (err) {
+        console.error('Error while decreasing positions by shelf and division:', err);
+        return res.status(500).json({ success: false, message: 'Server error occurred during position decrease.' });
+    }
+};
+
+/**
+ * Increases positions of all samples in a given shelf and division by a specified amount.
+ * Route: PATCH /api/samples/increase-positions-by-amount
+ */
 exports.increasePositionsByAmount = async (req, res) => {
-  console.log(`hit increasePositionsByAmount`);
-  let { shelf, division, amountToIncrease } = req.body;
-  // Convert inputs to numbers
-  shelf = Number(shelf);
-  division = Number(division);
-  amountToIncrease = Number(amountToIncrease);
+    console.log(`PATCH /samples/increase-positions-by-amount`);
+    let { shelf, division, amountToIncrease } = req.body;
 
-  console.log('increase positions for Shelf:', shelf, 'Division:', division, 'to increase:', amountToIncrease);
+    const numericShelf = Number(shelf);
+    const numericDivision = Number(division);
+    const numericAmountToIncrease = Number(amountToIncrease);
 
-  if (isNaN(shelf) || isNaN(division) || isNaN(amountToIncrease)) {
-    return res.status(400).json({ message: 'Invalid input types. All must be numbers.' });
-  }
-
-  try {
-    // Step 1: Normalize DB fields to ensure numeric values
-    const cursor = samplesCollection.find({
-      $or: [
-        { shelf: { $type: "string" } },
-        { division: { $type: "string" } },
-        { position: { $type: "string" } }
-      ]
-    });
-
-    for await (const doc of cursor) {
-      const numericShelf = parseInt(doc.shelf);
-      const numericDivision = parseInt(doc.division);
-      const numericPosition = parseInt(doc.position);
-
-      const update = {};
-      if (!isNaN(numericShelf)) update.shelf = numericShelf;
-      if (!isNaN(numericDivision)) update.division = numericDivision;
-      if (!isNaN(numericPosition)) update.position = numericPosition;
-
-      if (Object.keys(update).length > 0) {
-        await samplesCollection.updateOne({ _id: doc._id }, { $set: update });
-      }
+    if (isNaN(numericShelf) || isNaN(numericDivision) || isNaN(numericAmountToIncrease)) {
+        return res.status(400).json({ success: false, message: 'Invalid input types. Shelf, division, and amountToIncrease must be numbers.' });
+    }
+    if (numericAmountToIncrease <= 0) {
+        return res.status(400).json({ success: false, message: 'Amount to increase must be a positive number.' });
     }
 
-    // Step 2: Perform the actual position update
-    const query = {
-      shelf: shelf,
-      division: division,
-    };
+    try {
+        // Ensure fields are numeric (using your utility) - can be heavy if run often
+        await ensureNumericPositionFields(samplesCollection);
 
-    const preview = await samplesCollection.find(query).toArray();
-    console.log(`Found ${preview.length} document(s) to update.`);
+        const query = {
+            shelf: numericShelf,
+            division: numericDivision,
+        };
 
-    const result = await samplesCollection.updateMany(query, {
-      $inc: { position: amountToIncrease }
-    });
+        const result = await samplesCollection.updateMany(query, {
+            $inc: { position: numericAmountToIncrease }
+        });
 
-    if (result.modifiedCount > 0) {
-      return res.json({
-        message: `Positions increased by ${amountToIncrease} successfully`,
-        modifiedCount: result.modifiedCount
-      });
-    } else {
-      return res.json({
-        message: 'No positions were updated — no matching documents'
-      });
+        if (result.modifiedCount > 0) {
+            return res.status(200).json({
+                success: true,
+                message: `Positions increased by ${numericAmountToIncrease} for ${result.modifiedCount} document(s) on shelf ${numericShelf}, division ${numericDivision}.`,
+                modifiedCount: result.modifiedCount
+            });
+        } else {
+            return res.status(200).json({
+                success: true,
+                message: 'No positions were updated — no matching documents for increase by amount.',
+                modifiedCount: 0
+            });
+        }
+    } catch (err) {
+        console.error('Error while increasing positions by amount:', err);
+        return res.status(500).json({ success: false, message: 'Server error occurred during position increase by amount.' });
     }
+};
 
-  } catch (err) {
-    console.error('Error while decreasing positions:', err);
-    return res.status(500).json({ message: 'Server error' });
-  }
-}
-
-const normalizeFieldsToNumbers = require('../utils/nomalizeFieldsToNumbers');
-
+/**
+ * Normalizes positions (renumbers them sequentially from 1) within a given shelf and division.
+ * Route: PATCH /api/samples/normalize-positions-in-division
+ */
 exports.normalizePositions = async (req, res) => {
-  let { shelf, division } = req.body;
-  console.log('hit normalize positions');
-  // Convert inputs to numbers
-  shelf = parseInt(shelf);
-  division = parseInt(division);
+    console.log('PATCH /samples/normalize-positions-in-division');
+    let { shelf, division } = req.body;
 
-  if (isNaN(shelf) || isNaN(division)) {
-    return res.status(400).json({ message: 'Invalid input types. Shelf and division must be numbers.' });
-  }
+    const numericShelf = parseInt(shelf);
+    const numericDivision = parseInt(division);
 
-  try {
-    // ✅ Step 1: Normalize all shelf, division, and position fields to numbers
-    const updatedCount = await normalizeFieldsToNumbers(samplesCollection);
-
-    // ✅ Step 2: Fetch normalized and sorted documents for given shelf & division
-    const docs = await samplesCollection.find({ shelf, division })
-      .sort({ position: 1, _id: 1 })
-      .toArray();
-
-    // ✅ Step 3: Prepare bulk renumbering updates
-    const bulkOps = docs.map((doc, index) => ({
-      updateOne: {
-        filter: { _id: doc._id },
-        update: { $set: { position: index + 1 } }
-      }
-    }));
-
-    if (bulkOps.length > 0) {
-      const result = await samplesCollection.bulkWrite(bulkOps);
-      res.json({
-        success: true,
-        message: 'Positions normalized successfully',
-        normalizedFieldsUpdated: updatedCount?.updatedCount,
-        positionsRenumbered: result.modifiedCount
-      });
-    } else {
-      res.json({
-        message: 'No matching documents found to normalize',
-        normalizedFieldsUpdated: updatedCount?.updatedCount
-      });
+    if (isNaN(numericShelf) || isNaN(numericDivision)) {
+        return res.status(400).json({ success: false, message: 'Invalid input types. Shelf and division must be numbers.' });
     }
 
-  } catch (err) {
-    console.error('Normalize Error:', err);
-    res.status(500).json({ message: 'Server error' });
-  }
+    try {
+        // Step 1: Normalize all relevant fields to numbers using the external utility.
+        // This is crucial before sorting by position for renumbering.
+        const normalizedFieldCount = await normalizeFieldsToNumbers(samplesCollection);
+
+        // Step 2: Fetch normalized and sorted documents for given shelf & division
+        const docs = await samplesCollection.find({ shelf: numericShelf, division: numericDivision })
+            .sort({ position: 1, _id: 1 }) // Sort by position, then _id for consistent ordering
+            .toArray();
+
+        // Step 3: Prepare bulk renumbering updates
+        const bulkOps = docs.map((doc, index) => ({
+            updateOne: {
+                filter: { _id: doc._id },
+                update: { $set: { position: index + 1 } }
+            }
+        }));
+
+        let positionsRenumberedCount = 0;
+        if (bulkOps.length > 0) {
+            const result = await samplesCollection.bulkWrite(bulkOps);
+            positionsRenumberedCount = result.modifiedCount;
+        }
+
+        res.status(200).json({
+            success: true,
+            message: `Positions normalized successfully for shelf ${numericShelf}, division ${numericDivision}.`,
+            normalizedFieldsUpdated: normalizedFieldCount.updatedCount || 0, // Ensure it's a number
+            positionsRenumbered: positionsRenumberedCount
+        });
+
+    } catch (err) {
+        console.error('Error in normalizePositions:', err);
+        res.status(500).json({ success: false, message: 'Server error occurred during position normalization.' });
+    }
+};
+
+// --- DELETE Operations ---
+
+/**
+ * Soft deletes a sample by moving it from active/taken collections to the deleted collection.
+ * Adjusts positions in the active collection if the sample was from there.
+ * Route: DELETE /api/samples/:id (Protected)
+ */
+exports.deleteSample = async (req, res) => {
+    console.log('DELETE /samples/:id (soft delete)');
+    const { id } = req.params;
+    const userId = req.user?.id;
+    const username = req.user?.username;
+    const reduceOtherPositions = req.query.reducePositions === "yes"; // Convert to boolean
+
+    if (!isValidObjectId(id)) {
+        return res.status(400).json({ success: false, message: 'Invalid sample ID' });
+    }
+
+    try {
+        const objectId = new ObjectId(id);
+        const { sample, collectionSource } = await findSampleInCollections(objectId);
+
+        if (!sample) {
+            return res.status(404).json({ success: false, message: 'Sorry, Sample not found in either active or taken samples.' });
+        }
+
+        // --- Position Reduction Logic (only if from active collection and requested) ---
+        if (collectionSource === 'samplesCollection' && reduceOtherPositions) {
+            const { shelf, division, position } = sample;
+            const numericShelf = parseInt(shelf);
+            const numericDivision = parseInt(division);
+            const numericPosition = parseInt(position);
+
+            if (isNaN(numericShelf) || isNaN(numericDivision) || isNaN(numericPosition)) {
+                console.warn(`Sample ${id} has non-numeric shelf, division, or position. Skipping position reduction for this deletion.`);
+            } else {
+                try {
+                    // Ensure fields are numeric for consistency (using your utility)
+                    await ensureNumericPositionFields(samplesCollection);
+
+                    const query = {
+                        shelf: numericShelf,
+                        division: numericDivision,
+                        position: { $gt: numericPosition }
+                    };
+
+                    const result = await samplesCollection.updateMany(query, {
+                        $inc: { position: -1 }
+                    });
+
+                    if (result.modifiedCount > 0) {
+                        console.log(`Successfully decreased positions for ${result.modifiedCount} document(s) after deleting ${id}.`);
+                    } else {
+                        console.log(`No positions were updated for sample ${id} after deletion.`);
+                    }
+                } catch (err) {
+                    console.error('Error while decreasing positions during sample soft deletion:', err);
+                    // Do not block deletion even if position adjustment fails
+                }
+            }
+        }
+        // --- End Position Reduction Logic ---
+
+        // Prepare sample for deletion (include original _id for traceability in recycle bin)
+        const sampleToArchive = {
+            ...sample,
+            original_id: sample._id, // Keep a record of the original _id
+            deletedByUserId: userId,
+            deletedBy: username,
+            deletedAt: new Date(),
+        };
+        // Remove the _id property so MongoDB generates a new one upon insertion
+        delete sampleToArchive._id;
+
+        // Perform soft deletion (move to deletedSamplesCollection)
+        const archiveResult = await deletedSamplesCollection.insertOne(sampleToArchive);
+        if (!archiveResult.insertedId) {
+            return res.status(500).json({ success: false, message: 'Failed to archive sample to recycle bin.' });
+        }
+
+        // Delete from the original collection
+        const targetCollection = collectionSource === 'samplesCollection' ? samplesCollection : takenSamplesCollection;
+        const deleteResult = await targetCollection.deleteOne({ _id: objectId });
+
+        if (deleteResult.deletedCount === 0) {
+            // This case implies sample was removed by another process right before deleteOne.
+            return res.status(404).json({ success: false, message: 'Sample not found for final removal from source collection (might have been deleted concurrently).' });
+        }
+
+        res.status(200).json({ success: true, message: `Sample ${id} deleted and moved to recycle bin` });
+
+    } catch (error) {
+        console.error('Error in deleteSample (soft delete) controller:', error);
+        res.status(500).json({ success: false, message: 'Server Error occurred during sample soft deletion.' });
+    }
+};
+
+/**
+ * Permanently deletes a sample from the deleted samples collection (recycle bin).
+ * Route: DELETE /api/samples/permanent-delete/:id (Protected)
+ */
+exports.deleteSamplePermanently = async (req, res) => {
+    console.log('DELETE /samples/permanent-delete/:id (permanent delete)');
+    const { id } = req.params;
+
+    if (!isValidObjectId(id)) {
+        return res.status(400).json({ success: false, message: 'Invalid sample ID' });
+    }
+
+    try {
+        const objectId = new ObjectId(id);
+
+        const sample = await deletedSamplesCollection.findOne({ _id: objectId });
+
+        if (!sample) {
+            return res.status(404).json({ success: false, message: 'Sorry, Sample not found in the recycle bin.' });
+        }
+
+        const deleteResult = await deletedSamplesCollection.deleteOne({ _id: objectId });
+
+        if (deleteResult.deletedCount === 0) {
+            // This case implies sample was removed by another process right before deleteOne.
+            return res.status(404).json({ success: false, message: 'Sample not found for permanent deletion (might have been deleted concurrently).' });
+        }
+
+        res.status(200).json({ success: true, message: `Sample ${id} permanently deleted from recycle bin.` });
+
+    } catch (error) {
+        console.error('Error in deleteSamplePermanently controller:', error);
+        res.status(500).json({ success: false, message: 'Server Error occurred during permanent sample deletion.' });
+    }
 };
