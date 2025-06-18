@@ -13,6 +13,7 @@ const authRoutes = require('./routes/authRoutes');
 const utilityRoutes = require('./routes/utilityRoutes');
 const userRoutes = require('./routes/userRoutes');
 const sampleConflictRoutes = require('./routes/sampleConflictRoutes');
+const patterReleaseRoutes = require('./routes/patternReleaseRoutes');
 const { ObjectId } = require('mongodb');
 
 
@@ -40,42 +41,6 @@ const samplesCollection = db.collection("samples");
 app.get('/', (req, res) => {
   res.send('Base Finder by Mahadi, Server is running')
 })
-
-
-// **READ** - Get category by cat_id
-// app.get('/api/utilities/categories/:cat_id', async (req, res) => {
-//   const { cat_id } = req.params;
-//   try {
-//     const category = await categoriesCollection.findOne({ cat_id });
-//     if (!category) {
-//       return res.json({ message: 'Category not found' });
-//     }
-//     res.json(category);
-//   } catch (error) {
-//     res.status(500).json({ message: 'Error fetching category', error });
-//   }
-// });
-
-// **UPDATE** - Update a category by cat_id
-// app.put('/api/utilities/categories/:cat_id', async (req, res) => {
-//   const { cat_id } = req.params;
-//   const { cat_name, buyer_name, status, totalSamples } = req.body;
-//   console.log(cat_id, req.body);
-
-//   try {
-//     const updatedCategory = await categoriesCollection.findOneAndUpdate(
-//       { cat_id },
-//       { $set: { cat_name, buyer_name, status, totalSamples } },
-//       { returnDocument: 'after' }
-//     );
-//     if (!updatedCategory.value) {
-//       return res.json({ message: 'Category not found' });
-//     }
-//     res.send("sample category updated");
-//   } catch (error) {
-//     res.status(500).json({ message: 'Error updating category', error });
-//   }
-// });
 
 
 // GET unique category + buyer pairs with totalSamples from samplesCollection
@@ -230,3 +195,4 @@ app.use('/api/auth', authRoutes);
 app.use('/api/utilities', utilityRoutes);
 app.use('/api/users', userRoutes); // Mount user routes
 app.use('/api/samples-conflict', sampleConflictRoutes); // Mount user routes
+app.use('/api/pattern-release-logs', patterReleaseRoutes); // Mount user routes

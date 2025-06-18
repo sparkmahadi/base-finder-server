@@ -12,6 +12,8 @@ const { protect } = require('../middlewares/authMiddlewares'); // Assuming 'prot
 
 // Excel operations
 router.post('/upload-excel', samplesController.uploadSamplesFromExcel); // Upload samples via Excel
+router.patch('/add-unique-ids-to-existing-samples', samplesController.addSampleIdsToExistingDocuments);
+
 
 // Utility and Query Routes (more specific than /:id)
 router.get('/unique', samplesController.getUniqueFieldValues); // Get unique values for specified fields (e.g., categories, buyers)
@@ -45,7 +47,11 @@ router.route('/:id')
   .put(samplesController.updateSampleById); // Update a specific sample by ID
 
 // --- Protected Routes (Require Authentication) ---
-router.delete('/:id', protect, samplesController.deleteSample); // Soft delete a sample (move to recycle bin)
 router.delete('/permanent-delete/:id', protect, samplesController.deleteSamplePermanently); // Permanently delete a sample
+// DELETE all permanently deleted samples
+router.delete(
+  '/permanent-delete-all', protect, samplesController.deleteAllSamplePermanently
+);
+router.delete('/:id', protect, samplesController.deleteSample); // Soft delete a sample (move to recycle bin)
 
 module.exports = router;

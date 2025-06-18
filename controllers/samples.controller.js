@@ -23,7 +23,9 @@ const isValidObjectId = (id) => ObjectId.isValid(id);
  * @returns {Promise<{sample: object, collectionSource: string|null}>} - An object containing the sample and its source collection, or null if not found.
  */
 const findSampleInCollections = async (objectId) => {
+    console.log('object id', objectId);
     let sample = await samplesCollection.findOne({ _id: objectId });
+    console.log(sample);
     if (sample) {
         return { sample, collectionSource: 'samplesCollection' };
     }
@@ -75,32 +77,44 @@ exports.getAllSamples = async (req, res) => {
  * Retrieves sample details by ID, checking both active and taken collections.
  * Route: GET /api/samples/:id
  */
+
 exports.getSampleDetails = async (req, res) => {
     console.log('GET /samples/:id');
     const { id } = req.params;
 
-    if (!isValidObjectId(id)) {
-        return res.status(400).json({ success: false, message: 'Invalid sample ID' });
-    }
-
     try {
-        const objectId = new ObjectId(id);
-        const { sample, collectionSource } = await findSampleInCollections(objectId);
+        let sample = null;
+        let collectionSource = null;
+
+        // Try ObjectId search if valid
+        if (ObjectId.isValid(id)) {
+            const objectId = new ObjectId(id);
+            ({ sample, collectionSource } = await findSampleInCollections(objectId));
+        }
+
+        // If not found by ObjectId or not valid ObjectId, try string search
+        if (!sample) {
+            ({ sample, collectionSource } = await findSampleInCollections(id));
+        }
 
         if (sample) {
             return res.status(200).json({
                 success: true,
                 message: `Sample details found in ${collectionSource}`,
-                sample: sample,
+                sample,
             });
         } else {
             return res.status(404).json({ success: false, message: 'Sample not found' });
         }
     } catch (error) {
         console.error('Error fetching sample details:', error);
-        res.status(500).json({ success: false, message: 'Server Error occurred while fetching sample details.' });
+        return res.status(500).json({
+            success: false,
+            message: 'Server error occurred while fetching sample details.',
+        });
     }
 };
+
 
 /**
  * Retrieves samples based on shelf and division.
@@ -304,7 +318,15 @@ exports.postSample = async (req, res) => {
             return res.status(400).json({ success: false, message: "Invalid position, shelf, or division. Ensure they are valid numbers and position is positive." });
         }
 
-        // Step 1: Shift existing samples down by 1 position (if applicable)
+        // Step 1: Count existing samples to generate a unique sample_id
+        // Note: This approach might have a race condition if multiple inserts happen simultaneously.
+        // For production, consider using a separate sequence collection or a unique index on the ID.
+        const sampleCount = await samplesCollection.countDocuments({});
+        const nextIdNumber = sampleCount + 1;
+        // Format the number to be zero-padded to at least 4 digits (e.g., 1 -> 0001, 12 -> 0012)
+        const uniqueSampleId = `sample${nextIdNumber.toString().padStart(4, '0')}`;
+
+        // Step 2: Shift existing samples down by 1 position (if applicable)
         await samplesCollection.updateMany(
             {
                 shelf: numericShelf,
@@ -316,8 +338,10 @@ exports.postSample = async (req, res) => {
             }
         );
 
-        // Step 2: Prepare and insert the new sample
+        // Step 3: Prepare and insert the new sample
         const newSample = {
+            // MongoDB's default _id will be generated here
+            sample_id: uniqueSampleId, // Assign the newly generated unique ID to sample_id field
             ...otherSampleData,
             position: numericPosition,
             shelf: numericShelf,
@@ -329,15 +353,21 @@ exports.postSample = async (req, res) => {
 
         const result = await samplesCollection.insertOne(newSample);
 
-        if (result.insertedId) {
-            return res.status(201).json({ success: true, message: 'Sample inserted successfully', id: result.insertedId });
+        if (result.acknowledged) {
+            // Return the newly generated sample_id in the response
+            return res.status(201).json({ success: true, message: 'Sample inserted successfully', sample_id: newSample.sample_id, _id: result.insertedId });
         }
         res.status(500).json({ success: false, message: 'Failed to insert sample into the database.' });
     } catch (error) {
         console.error('Error inserting sample:', error);
+        // Handle duplicate ID error specifically if using unique index on sample_id
+        if (error.code === 11000) { // MongoDB duplicate key error code
+            return res.status(409).json({ success: false, message: 'A sample with this sample ID already exists. Please try again or contact support.' });
+        }
         res.status(500).json({ success: false, message: 'Server Error occurred during sample insertion.' });
     }
 };
+
 
 /**
  * Uploads multiple samples from an Excel file (expects an array of sample objects in req.body).
@@ -458,16 +488,28 @@ exports.takeSample = async (req, res) => {
     if (!taken_by || !purpose) {
         return res.status(400).json({ success: false, message: "Missing 'taken_by' or 'purpose' in request body." });
     }
-    if (!isValidObjectId(sampleId)) {
-        return res.status(400).json({ success: false, message: 'Invalid sample ID' });
-    }
 
     try {
-        const objectId = new ObjectId(sampleId);
-        // Step 1: Fetch the sample from samplesCollection
-        const sample = await samplesCollection.findOne({ _id: objectId });
+        let sample = null;
+        let originalId = sampleId;
+
+        // Try finding the sample by ObjectId if valid
+        if (ObjectId.isValid(sampleId)) {
+            const objectId = new ObjectId(sampleId);
+            sample = await samplesCollection.findOne({ _id: objectId });
+            originalId = objectId; // For storing as reference
+        }
+
+        // If not found or invalid ObjectId, try by string _id
         if (!sample) {
-            return res.status(404).json({ success: false, message: "Sample not found in active samples collection. It might be already taken or doesn't exist." });
+            sample = await samplesCollection.findOne({ _id: sampleId });
+        }
+
+        if (!sample) {
+            return res.status(404).json({
+                success: false,
+                message: "Sample not found in active samples collection. It might be already taken or doesn't exist.",
+            });
         }
 
         const timestamp = new Date();
@@ -477,7 +519,7 @@ exports.takeSample = async (req, res) => {
             taken_at: timestamp
         };
 
-        // Remove the original _id before inserting into takenSamplesCollection
+        // Remove original _id before archiving
         const { _id, ...restOfSample } = sample;
 
         const updatedSampleForTaken = {
@@ -486,17 +528,17 @@ exports.takeSample = async (req, res) => {
             last_taken_at: timestamp,
             availability: "no",
             taken_logs: [...(sample.taken_logs || []), logEntry],
-            original_sample_id: objectId // Store the original ID for traceability
+            original_sample_id: originalId // Keep traceability (ObjectId or string)
         };
 
-        // Step 2: Insert into takenSamples collection (this will generate a NEW _id)
+        // Insert into takenSamples collection
         const insertResult = await takenSamplesCollection.insertOne(updatedSampleForTaken);
         if (!insertResult.insertedId) {
             return res.status(500).json({ success: false, message: "Failed to archive the sample to taken samples." });
         }
         const newTakenSampleId = insertResult.insertedId;
 
-        // Step 3: Adjust position of samples below in the same shelf/division
+        // Reposition samples below the current one
         await samplesCollection.updateMany(
             {
                 shelf: sample.shelf,
@@ -506,11 +548,9 @@ exports.takeSample = async (req, res) => {
             { $inc: { position: -1 } }
         );
 
-        // Step 4: Delete the original sample from active samples collection
-        const deleteResult = await samplesCollection.deleteOne({ _id: objectId });
+        // Delete the original sample
+        const deleteResult = await samplesCollection.deleteOne({ _id: sample._id });
         if (deleteResult.deletedCount === 0) {
-            // This indicates a problem: sample was inserted into taken but not deleted from main
-            // Log this as a critical error for manual intervention
             console.error(`CRITICAL ERROR: Sample ${sampleId} moved to taken, but failed to delete from active. Manual intervention needed.`);
             return res.status(500).json({ success: false, message: "Sample archived but failed to remove original. Contact support." });
         }
@@ -529,6 +569,7 @@ exports.takeSample = async (req, res) => {
         return res.status(500).json({ success: false, message: "Server error occurred while taking sample." });
     }
 };
+
 
 /**
  * Moves a sample from the taken collection back to the active collection,
@@ -1030,3 +1071,76 @@ exports.deleteSamplePermanently = async (req, res) => {
         res.status(500).json({ success: false, message: 'Server Error occurred during permanent sample deletion.' });
     }
 };
+
+exports.deleteAllSamplePermanently = async (req, res) => {
+    console.log('delete all deleted samples');
+    try {
+      const result = await deletedSamplesCollection.deleteMany();
+
+      if (result.deletedCount === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'No deleted samples found to permanently remove.',
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        message: `${result.deletedCount} deleted samples permanently removed successfully.`,
+      });
+    } catch (error) {
+      console.error('Error deleting all samples permanently:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Server Error: Could not delete all samples permanently.',
+      });
+    }
+  }
+
+exports.addSampleIdsToExistingDocuments = async (req, res) => {
+    console.log("addSampleIdsToExistingDocuments");
+    try {
+
+        // Fetch all documents from the collection
+        // We'll sort them by _id to ensure a consistent order if the script is re-run,
+        // although for initial assignment, any consistent order works.
+        const existingSamplesCursor = samplesCollection.find({ sample_id: { $exists: false } }).sort({ _id: 1 });
+
+        let count = 0;
+        let bulkOps = []; // Use bulk operations for efficiency
+
+        while (await existingSamplesCursor.hasNext()) {
+            const doc = await existingSamplesCursor.next();
+            count++;
+            // Generate the unique sample_id based on the current count
+            const uniqueSampleId = `sample${count.toString().padStart(4, '0')}`;
+
+            // Add an update operation to the bulkOps array
+            bulkOps.push({
+                updateOne: {
+                    filter: { _id: doc._id },
+                    update: { $set: { sample_id: uniqueSampleId } }
+                }
+            });
+
+            // Execute bulk operations in batches to avoid overwhelming the database
+            if (bulkOps.length === 500) { // Process in batches of 500 documents
+                const result = await samplesCollection.bulkWrite(bulkOps);
+                console.log(`Executed bulk write for ${bulkOps.length} documents. Updated: ${result.modifiedCount}`);
+                bulkOps = []; // Reset bulkOps array
+            }
+        }
+
+        // Execute any remaining bulk operations
+        if (bulkOps.length > 0) {
+            const result = await samplesCollection.bulkWrite(bulkOps);
+            console.log(`Executed final bulk write for ${bulkOps.length} documents. Updated: ${result.modifiedCount}`);
+        }
+
+        console.log(`Migration complete! Added 'sample_id' to ${count} existing documents.`);
+        res.json({ success: true, message: `Migration complete! Added 'sample_id' to ${count} existing documents.` })
+
+    } catch (error) {
+        console.error("Error during migration:", error);
+    }
+}
