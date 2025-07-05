@@ -13,6 +13,7 @@ const { protect } = require('../middlewares/authMiddlewares'); // Assuming 'prot
 // Excel operations
 router.post('/upload-excel', samplesController.uploadSamplesFromExcel); // Upload samples via Excel
 router.patch('/add-unique-ids-to-existing-samples', samplesController.addSampleIdsToExistingDocuments);
+router.patch('/reset-and-reassign-unique-ids-to-existing-samples', samplesController.resetAndReassignSampleIds);
 
 
 // Utility and Query Routes (more specific than /:id)

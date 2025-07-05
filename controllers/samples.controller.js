@@ -22,19 +22,30 @@ const isValidObjectId = (id) => ObjectId.isValid(id);
  * @param {ObjectId} objectId - The ObjectId to search for.
  * @returns {Promise<{sample: object, collectionSource: string|null}>} - An object containing the sample and its source collection, or null if not found.
  */
-const findSampleInCollections = async (objectId) => {
-    console.log('object id', objectId);
-    let sample = await samplesCollection.findOne({ _id: objectId });
-    console.log(sample);
+const findSampleInCollections = async (idOrSampleId) => {
+    console.log('Received identifier:', idOrSampleId);
+
+    let query;
+
+    // Try to interpret the value as a valid ObjectId
+    if (ObjectId.isValid(idOrSampleId)) {
+        query = { _id: (idOrSampleId) };
+    } else {
+        query = { sample_id: idOrSampleId };
+    }
+
+    let sample = await samplesCollection.findOne(query);
     if (sample) {
+        console.log("found sample", "from collection", "samplesCollection");
         return { sample, collectionSource: 'samplesCollection' };
     }
 
-    sample = await takenSamplesCollection.findOne({ _id: objectId });
+    sample = await takenSamplesCollection.findOne(query);
     if (sample) {
+        console.log("found sample","from collection", "takenSamplesCollection");
         return { sample, collectionSource: 'takenSamplesCollection' };
     }
-
+    console.log("not found sample", 'with query', query);
     return { sample: null, collectionSource: null };
 };
 
@@ -325,18 +336,6 @@ exports.postSample = async (req, res) => {
         const nextIdNumber = sampleCount + 1;
         // Format the number to be zero-padded to at least 4 digits (e.g., 1 -> 0001, 12 -> 0012)
         const uniqueSampleId = `sample${nextIdNumber.toString().padStart(4, '0')}`;
-
-        // Step 2: Shift existing samples down by 1 position (if applicable)
-        await samplesCollection.updateMany(
-            {
-                shelf: numericShelf,
-                division: numericDivision,
-                position: { $gte: numericPosition }
-            },
-            {
-                $inc: { position: 1 }
-            }
-        );
 
         // Step 3: Prepare and insert the new sample
         const newSample = {
@@ -952,15 +951,16 @@ exports.deleteSample = async (req, res) => {
     const userId = req.user?.id;
     const username = req.user?.username;
     const reduceOtherPositions = req.query.reducePositions === "yes"; // Convert to boolean
+    
+    const objectId = new ObjectId(id);
 
-    if (!isValidObjectId(id)) {
+    if (!isValidObjectId(objectId)) {
         return res.status(400).json({ success: false, message: 'Invalid sample ID' });
     }
 
     try {
-        const objectId = new ObjectId(id);
         const { sample, collectionSource } = await findSampleInCollections(objectId);
-
+        console.log("sample", sample);
         if (!sample) {
             return res.status(404).json({ success: false, message: 'Sorry, Sample not found in either active or taken samples.' });
         }
@@ -1075,72 +1075,224 @@ exports.deleteSamplePermanently = async (req, res) => {
 exports.deleteAllSamplePermanently = async (req, res) => {
     console.log('delete all deleted samples');
     try {
-      const result = await deletedSamplesCollection.deleteMany();
+        const result = await deletedSamplesCollection.deleteMany();
 
-      if (result.deletedCount === 0) {
-        return res.status(404).json({
-          success: false,
-          message: 'No deleted samples found to permanently remove.',
+        if (result.deletedCount === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'No deleted samples found to permanently remove.',
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: `${result.deletedCount} deleted samples permanently removed successfully.`,
         });
-      }
-
-      res.status(200).json({
-        success: true,
-        message: `${result.deletedCount} deleted samples permanently removed successfully.`,
-      });
     } catch (error) {
-      console.error('Error deleting all samples permanently:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Server Error: Could not delete all samples permanently.',
-      });
+        console.error('Error deleting all samples permanently:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server Error: Could not delete all samples permanently.',
+        });
     }
-  }
+}
+
+// old controller was only specific for samples collection. deprecated by mahadi
+// exports.addSampleIdsToExistingDocuments = async (req, res) => {
+//     console.log("addSampleIdsToExistingDocuments");
+//     try {
+
+//         // Fetch all documents from the collection
+//         // We'll sort them by _id to ensure a consistent order if the script is re-run,
+//         // although for initial assignment, any consistent order works.
+//         const existingSamplesCursor = samplesCollection.find({ sample_id: { $exists: false } }).sort({ _id: 1 });
+
+//         let count = 0;
+//         let bulkOps = []; // Use bulk operations for efficiency
+
+//         while (await existingSamplesCursor.hasNext()) {
+//             const doc = await existingSamplesCursor.next();
+//             count++;
+//             // Generate the unique sample_id based on the current count
+//             const uniqueSampleId = `sample${count.toString().padStart(4, '0')}`;
+
+//             // Add an update operation to the bulkOps array
+//             bulkOps.push({
+//                 updateOne: {
+//                     filter: { _id: doc._id },
+//                     update: { $set: { sample_id: uniqueSampleId } }
+//                 }
+//             });
+
+//             // Execute bulk operations in batches to avoid overwhelming the database
+//             if (bulkOps.length === 500) { // Process in batches of 500 documents
+//                 const result = await samplesCollection.bulkWrite(bulkOps);
+//                 console.log(`Executed bulk write for ${bulkOps.length} documents. Updated: ${result.modifiedCount}`);
+//                 bulkOps = []; // Reset bulkOps array
+//             }
+//         }
+
+//         // Execute any remaining bulk operations
+//         if (bulkOps.length > 0) {
+//             const result = await samplesCollection.bulkWrite(bulkOps);
+//             console.log(`Executed final bulk write for ${bulkOps.length} documents. Updated: ${result.modifiedCount}`);
+//         }
+
+//         console.log(`Migration complete! Added 'sample_id' to ${count} existing documents.`);
+//         res.json({ success: true, message: `Migration complete! Added 'sample_id' to ${count} existing documents.` })
+
+//     } catch (error) {
+//         console.error("Error during migration:", error);
+//     }
+// }
 
 exports.addSampleIdsToExistingDocuments = async (req, res) => {
-    console.log("addSampleIdsToExistingDocuments");
+    console.log("Starting addSampleIdsToExistingDocuments...");
+
     try {
+        const collections = [
+            samplesCollection,
+            takenSamplesCollection,
+            deletedSamplesCollection,
+        ];
 
-        // Fetch all documents from the collection
-        // We'll sort them by _id to ensure a consistent order if the script is re-run,
-        // although for initial assignment, any consistent order works.
-        const existingSamplesCursor = samplesCollection.find({ sample_id: { $exists: false } }).sort({ _id: 1 });
+        const usedIds = new Set();
 
-        let count = 0;
-        let bulkOps = []; // Use bulk operations for efficiency
+        // Step 1: Gather all existing sample_id numbers
+        for (const collection of collections) {
+            const existingIds = await collection
+                .find({ sample_id: { $exists: true } }, { projection: { sample_id: 1 } })
+                .toArray();
 
-        while (await existingSamplesCursor.hasNext()) {
-            const doc = await existingSamplesCursor.next();
-            count++;
-            // Generate the unique sample_id based on the current count
-            const uniqueSampleId = `sample${count.toString().padStart(4, '0')}`;
-
-            // Add an update operation to the bulkOps array
-            bulkOps.push({
-                updateOne: {
-                    filter: { _id: doc._id },
-                    update: { $set: { sample_id: uniqueSampleId } }
+            existingIds.forEach(doc => {
+                const match = doc.sample_id?.match(/^sample(\d{4})$/);
+                if (match) {
+                    usedIds.add(parseInt(match[1], 10));
                 }
             });
+        }
 
-            // Execute bulk operations in batches to avoid overwhelming the database
-            if (bulkOps.length === 500) { // Process in batches of 500 documents
-                const result = await samplesCollection.bulkWrite(bulkOps);
-                console.log(`Executed bulk write for ${bulkOps.length} documents. Updated: ${result.modifiedCount}`);
-                bulkOps = []; // Reset bulkOps array
+        // Step 2: Assign new sample_ids only to documents missing them
+        let nextId = 1;
+        let totalAssigned = 0;
+
+        for (const collection of collections) {
+            const cursor = collection.find({ sample_id: { $exists: false } }).sort({ _id: 1 });
+            let bulkOps = [];
+
+            while (await cursor.hasNext()) {
+                const doc = await cursor.next();
+
+                // Find the next unused ID
+                while (usedIds.has(nextId)) {
+                    nextId++;
+                }
+
+                const newSampleId = `sample${nextId.toString().padStart(6, '0')}`;
+                usedIds.add(nextId); // Mark this ID as used
+                nextId++;
+                totalAssigned++;
+
+                bulkOps.push({
+                    updateOne: {
+                        filter: { _id: doc._id },
+                        update: { $set: { sample_id: newSampleId } },
+                    },
+                });
+
+                if (bulkOps.length === 500) {
+                    const result = await collection.bulkWrite(bulkOps);
+                    console.log(`Bulk write: Updated ${result.modifiedCount} documents`);
+                    bulkOps = [];
+                }
+            }
+
+            if (bulkOps.length > 0) {
+                const result = await collection.bulkWrite(bulkOps);
+                console.log(`Final bulk write: Updated ${result.modifiedCount} documents`);
             }
         }
 
-        // Execute any remaining bulk operations
-        if (bulkOps.length > 0) {
-            const result = await samplesCollection.bulkWrite(bulkOps);
-            console.log(`Executed final bulk write for ${bulkOps.length} documents. Updated: ${result.modifiedCount}`);
-        }
-
-        console.log(`Migration complete! Added 'sample_id' to ${count} existing documents.`);
-        res.json({ success: true, message: `Migration complete! Added 'sample_id' to ${count} existing documents.` })
+        console.log(`✅ Migration complete. Assigned ${totalAssigned} new sample_id values.`);
+        res.json({
+            success: true,
+            message: `Migration complete. Assigned ${totalAssigned} new sample_id values.`,
+        });
 
     } catch (error) {
-        console.error("Error during migration:", error);
+        console.error("❌ Error during migration:", error);
+        res.status(500).json({ success: false, message: "Migration failed.", error: error.message });
     }
-}
+};
+
+exports.resetAndReassignSampleIds = async (req, res) => {
+    console.log("Starting reset and reassign of all sample_ids...");
+
+    try {
+        const collections = [
+            { name: "samplesCollection", collection: samplesCollection },
+            { name: "takenSamplesCollection", collection: takenSamplesCollection },
+            { name: "deletedSamplesCollection", collection: deletedSamplesCollection },
+        ];
+
+        // Step 1: Fetch all documents from all collections
+        const allDocs = [];
+
+        for (const { name, collection } of collections) {
+            const docs = await collection.find({}).project({ _id: 1 }).toArray();
+            docs.forEach(doc => {
+                allDocs.push({ ...doc, collectionName: name });
+            });
+        }
+
+        // Step 2: Sort all documents by _id for consistent ordering
+        allDocs.sort((a, b) => a._id.toString().localeCompare(b._id.toString()));
+
+        // Step 3: Generate new sample_id values
+        const idMap = new Map(); // Map<collectionName, bulkOps[]>
+        let count = 1;
+
+        for (const doc of allDocs) {
+            const newSampleId = `sample${count.toString().padStart(4, '0')}`;
+            count++;
+
+            if (!idMap.has(doc.collectionName)) {
+                idMap.set(doc.collectionName, []);
+            }
+
+            idMap.get(doc.collectionName).push({
+                updateOne: {
+                    filter: { _id: doc._id },
+                    update: { $set: { sample_id: newSampleId } },
+                },
+            });
+        }
+
+        // Step 4: Perform bulk updates for each collection
+        let totalUpdated = 0;
+
+        for (const { name, collection } of collections) {
+            const bulkOps = idMap.get(name) || [];
+
+            if (bulkOps.length > 0) {
+                // Split into batches of 500
+                for (let i = 0; i < bulkOps.length; i += 500) {
+                    const batch = bulkOps.slice(i, i + 500);
+                    const result = await collection.bulkWrite(batch);
+                    totalUpdated += result.modifiedCount;
+                    console.log(`${name}: Updated ${result.modifiedCount} documents`);
+                }
+            }
+        }
+
+        console.log(`✅ Reset and reassigned sample_id for ${totalUpdated} documents.`);
+        res.json({
+            success: true,
+            message: `Reset and reassigned sample_id for ${totalUpdated} documents.`,
+        });
+
+    } catch (error) {
+        console.error("❌ Error during forced reset:", error);
+        res.status(500).json({ success: false, message: "Forced reset failed.", error: error.message });
+    }
+};
