@@ -1,6 +1,6 @@
 const { db } = require("../../db");
 const { ObjectId } = require("mongodb");
-const normalizeFieldsToNumbers = require("../../utils/nomalizeFieldsToNumbers");
+// const normalizeFieldsToNumbers = require("../../utils/nomalizeFieldsToNumbers");
 
 const sampleCategoriesCollection = db.collection("sample-categories");
 const samplesCollection = db.collection("samples");

@@ -16,11 +16,16 @@ exports.getAllUsers = async (req, res) => {
 
 // Create a new user
 exports.createUser = async (req, res) => {
+  console.log('hit create user');
   try {
-    const { username, name, email, role, password, verification, approval } = req.body;
+    const { username, name, email, team, password } = req.body;
 
-    if (!username || !name || !email || !role || !password) {
-      return res.status(400).json({ message: 'Missing required fields: username, name, email, role, and password are all necessary to create a user.' });
+    console.log('Creating user with team:', team);
+
+    if (!username || !name || !email || !password || !team) {
+      return res.status(400).json({
+        message: 'Missing required fields: username, name, email, team, and password are all necessary to create a user.'
+      });
     }
 
     const existingUser = await usersCollection.findOne({
@@ -36,12 +41,16 @@ exports.createUser = async (req, res) => {
       username,
       name,
       email,
-      role: role || 'viewer',
+      team,
+      role: 'viewer',
       verification: typeof verification === 'boolean' ? verification : false,
       approval: typeof approval === 'boolean' ? approval : false,
       password: hashedPassword,
       createdAt: new Date(),
     };
+
+    console.log('Final user object:', newUser);
+
 
     const result = await usersCollection.insertOne(newUser);
     const createdUser = await usersCollection.findOne({ _id: result.insertedId }, { projection: { password: 0 } });
@@ -49,7 +58,7 @@ exports.createUser = async (req, res) => {
   } catch (error) {
     console.error('Error creating user:', error);
     if (error.code === 11000) {
-        return res.status(409).json({ message: 'A user with this username or email already exists.' });
+      return res.status(409).json({ message: 'A user with this username or email already exists.' });
     }
     res.status(500).json({ message: 'An internal server error occurred while creating the user.', error: error.message });
   }
@@ -61,7 +70,7 @@ exports.updateUser = async (req, res) => {
   try {
     const { id } = req.params;
     // Destructure all possible fields, including oldPassword and newPassword
-    const { username, name, email, role, oldPassword, newPassword, verification, approval } = req.body;
+    const { username, name, email, role, oldPassword, newPassword, verification, approval, team } = req.body;
 
     // --- CRITICAL DEBUGGING POINT 1: Check what's received in req.body ---
     console.log("1. Received User ID from params:", id);
@@ -80,6 +89,7 @@ exports.updateUser = async (req, res) => {
     if (name !== undefined) updateData.name = name;
     if (email !== undefined) updateData.email = email;
     if (role !== undefined) updateData.role = role;
+    if (team !== undefined) updateData.team = team;
     // Ensure verification and approval are boolean, default to false if not provided or invalid
     if (verification !== undefined) updateData.verification = typeof verification === 'boolean' ? verification : false;
     if (approval !== undefined) updateData.approval = typeof approval === 'boolean' ? approval : false;
@@ -89,38 +99,38 @@ exports.updateUser = async (req, res) => {
     // --- Secure Password Change Logic ---
     // This condition checks if there's any intention to change password
     if (oldPassword || newPassword) {
-        console.log("6. Password change attempt detected.");
+      console.log("6. Password change attempt detected.");
 
-        // This condition checks if both old and new passwords are provided
-        if (!oldPassword || !newPassword) {
-            console.log("7. Missing old or new password for change.");
-            return res.status(400).json({ message: 'To change password, both current password and new password are required.' });
-        }
+      // This condition checks if both old and new passwords are provided
+      if (!oldPassword || !newPassword) {
+        console.log("7. Missing old or new password for change.");
+        return res.status(400).json({ message: 'To change password, both current password and new password are required.' });
+      }
 
-        // 1. Fetch the user to get the stored hashed password
-        console.log("8. Attempting to find user in DB for password verification...");
-        const user = await usersCollection.findOne({ _id: new ObjectId(id) });
+      // 1. Fetch the user to get the stored hashed password
+      console.log("8. Attempting to find user in DB for password verification...");
+      const user = await usersCollection.findOne({ _id: new ObjectId(id) });
 
-        if (!user) {
-            console.log("9. User NOT found in DB for password change. ID:", id);
-            return res.status(404).json({ message: `No user found with the ID: ${id} for password change.` });
-        }
-        console.log("10. User found for password change. Hashed password:", user.password);
+      if (!user) {
+        console.log("9. User NOT found in DB for password change. ID:", id);
+        return res.status(404).json({ message: `No user found with the ID: ${id} for password change.` });
+      }
+      console.log("10. User found for password change. Hashed password:", user.password);
 
 
-        // 2. Compare provided old password with stored hash
-        console.log("11. Comparing provided old password with stored hash...");
-        const isPasswordValid = await bcrypt.compare(oldPassword, user.password);
+      // 2. Compare provided old password with stored hash
+      console.log("11. Comparing provided old password with stored hash...");
+      const isPasswordValid = await bcrypt.compare(oldPassword, user.password);
 
-        if (!isPasswordValid) {
-            console.log("12. Provided current password is INCORRECT.");
-            return res.status(401).json({ message: 'The current password you provided is incorrect.' });
-        }
-        console.log("13. Provided current password is CORRECT.");
+      if (!isPasswordValid) {
+        console.log("12. Provided current password is INCORRECT.");
+        return res.status(401).json({ message: 'The current password you provided is incorrect.' });
+      }
+      console.log("13. Provided current password is CORRECT.");
 
-        // 3. Hash the new password and add it to updateData
-        updateData.password = await bcrypt.hash(newPassword, 10);
-        console.log("14. New password hashed and added to updateData. Password length:", updateData.password.length);
+      // 3. Hash the new password and add it to updateData
+      updateData.password = await bcrypt.hash(newPassword, 10);
+      console.log("14. New password hashed and added to updateData. Password length:", updateData.password.length);
     }
 
     const result = await usersCollection.findOneAndUpdate(
