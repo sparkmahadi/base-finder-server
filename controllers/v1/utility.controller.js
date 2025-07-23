@@ -1,6 +1,6 @@
-const { db } = require("../db");
+const { db } = require("../../db");
 const { ObjectId } = require("mongodb");
-const normalizeFieldsToNumbers = require("../utils/nomalizeFieldsToNumbers");
+const normalizeFieldsToNumbers = require("../../utils/nomalizeFieldsToNumbers");
 
 const sampleCategoriesCollection = db.collection("sample-categories");
 const samplesCollection = db.collection("samples");
@@ -41,9 +41,16 @@ module.exports.deleteCategory = async (req, res) => {
 module.exports.postCategory = async (req, res) => {
   const { cat_name, status, totalSamples, createdBy } = req.body;
   console.log(cat_name, status, totalSamples, createdBy);
-  if (!cat_name || !status || !totalSamples || createdBy === undefined) {
+
+  if (!cat_name || !status || totalSamples === undefined || totalSamples === null || !createdBy) {
+    console.log('entered error');
     return res.status(400).json({ success: false, message: 'Missing required fields' });
   }
+
+  if (!Number.isInteger(totalSamples) || totalSamples < 0) {
+    return res.status(400).json({ success: false, message: 'Invalid totalSamples value' });
+  }
+
 
   try {
     // Check for existing category with same cat_name and buyer_name
@@ -61,7 +68,7 @@ module.exports.postCategory = async (req, res) => {
     // If no duplicate, insert new category
     const newCategory = { cat_name, status, totalSamples, createdBy, createdAt: new Date() };
     const result = await sampleCategoriesCollection.insertOne(newCategory);
-console.log(result);
+    console.log(result);
     if (result.acknowledged) {
       return res.status(201).json({
         success: true,

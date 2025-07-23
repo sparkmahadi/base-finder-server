@@ -1,6 +1,6 @@
 // routes/userRoutes.js
 const express = require('express');
-const userController = require('../controllers/users.controller'); // Import the controller
+const userController = require('../../controllers/v1/users.controller'); // Import the controller
 const router = express.Router();
 
 // Middleware for authentication and authorization (simplified for this example)

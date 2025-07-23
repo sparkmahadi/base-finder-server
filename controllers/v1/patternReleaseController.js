@@ -1,6 +1,6 @@
 // const PatternLog = require('../models/PatternLog'); // Mongoose model is no longer used
 const { ObjectId } = require('mongodb'); // Import ObjectId for handling MongoDB _id fields
-const {db} = require('../db');
+const {db} = require('../../db');
 const patternReleaseCollection = db.collection('pattern-releases'); // Your collection name
 
 // @desc    Get all pattern logs from MongoDB collection

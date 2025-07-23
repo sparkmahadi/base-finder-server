@@ -2,8 +2,8 @@
 
 const express = require('express');
 const router = express.Router();
-const samplesController = require('../controllers/samples.controller');
-const { protect } = require('../middlewares/authMiddlewares');
+const samplesController = require('../../controllers/v1/samples.controller');
+const { protect } = require('../../middlewares/authMiddlewares');
 
 // Public routes
 router.route('/')

@@ -1,4 +1,4 @@
-const { db } = require("../db");
+const { db } = require("../../db");
 const { ObjectId } = require("mongodb");
 
 const samplesCollection = db.collection("samples");
@@ -1010,7 +1010,7 @@ exports.increasePositionsByAmount = async (req, res) => {
   }
 }
 
-const normalizeFieldsToNumbers = require('../utils/nomalizeFieldsToNumbers');
+const normalizeFieldsToNumbers = require('../../utils/nomalizeFieldsToNumbers');
 
 exports.normalizePositions = async (req, res) => {
   let { shelf, division } = req.body;

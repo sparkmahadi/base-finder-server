@@ -1,6 +1,6 @@
 const { ObjectId } = require('mongodb');
 const bcrypt = require("bcrypt");
-const { db } = require('../db');
+const { db } = require('../../db');
 const usersCollection = db.collection('users');
 
 // Get all users

@@ -8,12 +8,12 @@ const jwt = require("jsonwebtoken");
 const { connectToDB } = require('./db');
 const { db } = require("./db");
 
-const sampleRoutes = require('./routes/sampleRoutes')
-const authRoutes = require('./routes/authRoutes');
-const utilityRoutes = require('./routes/utilityRoutes');
-const userRoutes = require('./routes/userRoutes');
-const sampleConflictRoutes = require('./routes/sampleConflictRoutes');
-const patterReleaseRoutes = require('./routes/patternReleaseRoutes');
+const sampleRoutes = require('./routes/v1/sampleRoutes')
+const authRoutes = require('./routes/v1/authRoutes');
+const utilityRoutes = require('./routes/v1/utilityRoutes');
+const userRoutes = require('./routes/v1/userRoutes');
+const sampleConflictRoutes = require('./routes/v1/sampleConflictRoutes');
+const patterReleaseRoutes = require('./routes/v1/patternReleaseRoutes');
 const { ObjectId } = require('mongodb');
 
 
@@ -44,7 +44,7 @@ app.get('/', (req, res) => {
 
 
 // GET unique category + buyer pairs with totalSamples from samplesCollection
-app.get('/api/utilities/unique-category-buyers', async (req, res) => {
+app.get('/api/v1/utilities/unique-category-buyers', async (req, res) => {
   console.log('hit get unique category');
   try {
     const uniquePairs = await samplesCollection.aggregate([
@@ -76,7 +76,7 @@ app.get('/api/utilities/unique-category-buyers', async (req, res) => {
   }
 });
 
-app.post('/api/utilities/categories/bulk', async (req, res) => {
+app.post('/api/v1/utilities/categories/bulk', async (req, res) => {
   const { categories } = req.body;
   if (!Array.isArray(categories) || categories.length === 0) {
     return res.status(400).json({ success: false, message: 'No categories provided' });
@@ -142,7 +142,7 @@ const verifyToken = (req, res, next) => {
 };
 
 // API to get user info
-app.get('/api/auth/user', verifyToken, async (req, res) => {
+app.get('/api/v1/auth/user', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id; // Assuming JWT payload has user id
     const query = { _id: new ObjectId(userId) };
@@ -161,7 +161,7 @@ app.get('/api/auth/user', verifyToken, async (req, res) => {
 });
 
 // GET samples by shelf and division
-app.get('/api/samples-by-location', async (req, res) => {
+app.get('/api/v1/samples-by-location', async (req, res) => {
   const { shelf, division } = req.query; // Get shelf and division from query parameters
   console.log(shelf, division);
   if (!shelf || !division) {
@@ -190,9 +190,9 @@ app.get('/api/samples-by-location', async (req, res) => {
 });
 
 
-app.use('/api/samples', sampleRoutes);
-app.use('/api/auth', authRoutes);
-app.use('/api/utilities', utilityRoutes);
-app.use('/api/users', userRoutes); // Mount user routes
-app.use('/api/samples-conflict', sampleConflictRoutes); // Mount user routes
-app.use('/api/pattern-release-logs', patterReleaseRoutes); // Mount user routes
+app.use('/api/v1/samples', sampleRoutes);
+app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/utilities', utilityRoutes);
+app.use('/api/v1/users', userRoutes); // Mount user routes
+app.use('/api/v1/samples-conflict', sampleConflictRoutes); // Mount user routes
+app.use('/api/v1/pattern-release-logs', patterReleaseRoutes); // Mount user routes

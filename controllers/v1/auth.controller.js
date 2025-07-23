@@ -1,8 +1,8 @@
 // backend/controllers/authController.js
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
-const { loginUser } = require("../models/userModel");
-const {db} = require("../db");
+const { loginUser } = require("../../models/userModel");
+const {db} = require("../../db");
 
 const JWT_SECRET = process.env.JWT_SECRET || "your_secret_key";
 
