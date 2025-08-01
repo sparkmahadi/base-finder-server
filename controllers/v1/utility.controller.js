@@ -135,7 +135,6 @@ module.exports.postBuyer = async (req, res) => {
 // Controller for creating a new Status
 module.exports.postStatus = async (req, res) => {
   const { value, createdBy } = req.body; // Destructure 'createdBy' from req.body
-
   if (!value || value.trim() === '') {
     return res.status(400).json({ success: false, message: 'Status name is required' });
   }

@@ -21,6 +21,7 @@ exports.getAllLogs = async (req, res) => { // Assuming db is passed
 // @route   POST /api/pattern-release-logs
 // @access  Public (consider adding authentication/authorization)
 exports.createLog = async (req, res) => {
+    console.log(req.body);
     try {
         const {
             date,
@@ -32,6 +33,7 @@ exports.createLog = async (req, res) => {
             status, // New field from frontend
             added_by,
             added_at,
+            comments,
         } = req.body;
 
         // Basic validation for essential fields
@@ -61,6 +63,7 @@ exports.createLog = async (req, res) => {
             date: logDate,
             buyer,
             style,
+            comments: comments || "",
             item, // This is now 'Category'
             body: body || '', // Default to empty string if not provided
             size: size || '', // Default to empty string if not provided
@@ -98,6 +101,7 @@ exports.updateLog = async (req, res) => {
             status,
             updated_by,
             last_updated_at,
+            comments,
             // Exclude any other fields that shouldn't be directly updated
             _id, // Exclude _id if it's sent in req.body
             createdAt, // Exclude createdAt from direct update
@@ -126,6 +130,7 @@ exports.updateLog = async (req, res) => {
             item,
             body: body || '',
             size: size || '',
+            comments: comments || "",
             status,
             updated_by: updated_by || 'system', // Default or ensure user info
             last_updated_at: last_updated_at ? new Date(last_updated_at) : new Date(), // Use provided or current date
