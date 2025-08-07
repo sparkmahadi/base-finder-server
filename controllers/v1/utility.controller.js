@@ -39,7 +39,8 @@ module.exports.deleteCategory = async (req, res) => {
 };
 
 module.exports.postCategory = async (req, res) => {
-  const { cat_name, status, totalSamples, createdBy } = req.body;
+  const { cat_name, status, createdBy } = req.body;
+  const totalSamples = req.body.totalSamples || 0;
   console.log(cat_name, status, totalSamples, createdBy);
 
   if (!cat_name || !status || totalSamples === undefined || totalSamples === null || !createdBy) {
