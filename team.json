@@ -1,0 +1,22 @@
+{
+  "_id": { "$oid": "66aa1234567890abcdef1234" },
+  "team_name": "LPP",
+  "buyers": [
+    "LPP",
+    "Carter's",
+    "Gap"
+  ],
+  "members": [
+    {
+      "user_id": "6818bab43d5f13785c0e6714",
+      "username": "sparkm",
+      "role": "admin"
+    },
+    {
+      "user_id": "6818bab43d5f13785c0e6715",
+      "username": "john_doe",
+      "role": "member"
+    }
+  ],
+  "created_at": { "$date": "2025-07-23T18:44:10.286Z" }
+}
