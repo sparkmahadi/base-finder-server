@@ -4,7 +4,7 @@ const {
   createLog,
   updateLog,
   deleteLog,
-} = require('../../controllers/v1/patternReleaseController');
+} = require('../../controllers/v2/patternReleaseController');
 
 const router = express.Router();
 

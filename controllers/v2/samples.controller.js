@@ -1,6 +1,7 @@
 const { db } = require("../../db");
 const { ObjectId } = require("mongodb");
 const normalizeFieldsToNumbers = require('../../utils/nomalizeFieldsToNumbers');
+const { logActivity } = require("../../utils/activityLogger");
 
 // Collection References
 const samplesCollection = db.collection("samples");
@@ -44,7 +45,7 @@ const findSampleInCollections = async (idOrSampleId) => {
 
     sample = await takenSamplesCollection.findOne(query);
     if (sample) {
-        console.log("found sample","from collection", "takenSamplesCollection");
+        console.log("found sample", "from collection", "takenSamplesCollection");
         return { sample, collectionSource: 'takenSamplesCollection' };
     }
     console.log("not found sample", 'with query', query);
@@ -70,54 +71,52 @@ const ensureNumericPositionFields = async (collection) => {
  */
 exports.getAllSamples = async (req, res) => {
     const userId = req.user?._id || req.user?.id;
-  console.log('GET /samples (all samples for user - )', userId);
+    console.log('GET /samples (all samples for user - )', userId);
 
-  try {
-    const userRole = req.user?.role;
-    if (!userId) {
-      return res.status(401).json({ success: false, message: 'Unauthorized: User not found in request' });
+    try {
+        const userRole = req.user?.role;
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'Unauthorized: User not found in request' });
+        }
+
+        // Admin gets all samples
+        if (userRole === 'admin') {
+            const allSamples = await samplesCollection.find().toArray();
+
+            return res.status(200).json({
+                success: true,
+                message: `${allSamples.length} samples found (admin access)`,
+                samples: allSamples,
+            });
+        }
+
+        // 1️⃣ Find the team document that contains this user as member
+        const team = await teamsCollection.findOne({
+            'members.user_id': userId
+        });
+
+        if (!team) {
+            return res.status(404).json({ success: false, message: 'Team not found for this user' });
+        }
+
+        // 2️⃣ Use the buyers array from the team document to filter samples
+        const buyersList = team.buyers || [];
+
+        // 3️⃣ Query samplesCollection and takenSamplesCollection by buyer in buyersList
+        const activeSamples = await samplesCollection.find({ buyer: { $in: buyersList } }).toArray();
+        const takenSamples = await takenSamplesCollection.find({ buyer: { $in: buyersList } }).toArray();
+
+        const allSamples = [...activeSamples, ...takenSamples];
+
+        res.status(200).json({
+            success: true,
+            message: `${allSamples.length} samples found for team ${team.team_name}`,
+            samples: allSamples,
+        });
+    } catch (error) {
+        console.error('Error fetching samples for user team:', error);
+        res.status(500).json({ success: false, message: 'Server Error occurred while fetching samples.' });
     }
-
-    // Admin gets all samples
-    if (userRole === 'admin') {
-      const activeSamples = await samplesCollection.find().toArray();
-      const takenSamples = await takenSamplesCollection.find().toArray();
-      const allSamples = [...activeSamples, ...takenSamples];
-
-      return res.status(200).json({
-        success: true,
-        message: `${allSamples.length} samples found (admin access)`,
-        samples: allSamples,
-      });
-    }
-
-    // 1️⃣ Find the team document that contains this user as member
-    const team = await teamsCollection.findOne({
-      'members.user_id': userId
-    });
-
-    if (!team) {
-      return res.status(404).json({ success: false, message: 'Team not found for this user' });
-    }
-
-    // 2️⃣ Use the buyers array from the team document to filter samples
-    const buyersList = team.buyers || [];
-
-    // 3️⃣ Query samplesCollection and takenSamplesCollection by buyer in buyersList
-    const activeSamples = await samplesCollection.find({ buyer: { $in: buyersList } }).toArray();
-    const takenSamples = await takenSamplesCollection.find({ buyer: { $in: buyersList } }).toArray();
-
-    const allSamples = [...activeSamples, ...takenSamples];
-
-    res.status(200).json({
-      success: true,
-      message: `${allSamples.length} samples found for team ${team.team_name}`,
-      samples: allSamples,
-    });
-  } catch (error) {
-    console.error('Error fetching samples for user team:', error);
-    res.status(500).json({ success: false, message: 'Server Error occurred while fetching samples.' });
-  }
 };
 
 /**
@@ -354,8 +353,10 @@ exports.getDeletedSamples = async (req, res) => {
  */
 exports.postSample = async (req, res) => {
     console.log('POST /samples');
+    const user = req.user;
     try {
         const { position, shelf, division, ...otherSampleData } = req.body;
+        console.log(otherSampleData);
 
         const numericPosition = Number(position);
         const numericShelf = Number(shelf);
@@ -365,30 +366,21 @@ exports.postSample = async (req, res) => {
             return res.status(400).json({ success: false, message: "Invalid position, shelf, or division. Ensure they are valid numbers and position is positive." });
         }
 
-        // Step 1: Count existing samples to generate a unique sample_id
-        // Note: This approach might have a race condition if multiple inserts happen simultaneously.
-        // For production, consider using a separate sequence collection or a unique index on the ID.
-        const sampleCount = await samplesCollection.countDocuments({});
-        const nextIdNumber = sampleCount + 1;
-        // Format the number to be zero-padded to at least 4 digits (e.g., 1 -> 0001, 12 -> 0012)
-        const uniqueSampleId = `sample${nextIdNumber.toString().padStart(4, '0')}`;
-
         // Step 3: Prepare and insert the new sample
         const newSample = {
-            // MongoDB's default _id will be generated here
-            sample_id: uniqueSampleId, // Assign the newly generated unique ID to sample_id field
             ...otherSampleData,
             position: numericPosition,
             shelf: numericShelf,
             division: numericDivision,
             availability: "yes", // Assuming new samples are always available
             added_at: new Date(),
-            // Consider adding 'added_by' from req.user if applicable
         };
 
         const result = await samplesCollection.insertOne(newSample);
 
         if (result.acknowledged) {
+            // move samples to down handled by frontend
+
             // Return the newly generated sample_id in the response
             return res.status(201).json({ success: true, message: 'Sample inserted successfully', sample_id: newSample.sample_id, _id: result.insertedId });
         }
@@ -511,99 +503,116 @@ exports.updateSampleById = async (req, res) => {
 };
 
 /**
- * Moves a sample from the active collection to the taken collection,
- * and adjusts positions in the active collection.
+ * Marks a sample as taken in the active collection.
  * Route: PUT /api/samples/:id/take
  */
 exports.takeSample = async (req, res) => {
     console.log('PUT /samples/:id/take');
+    const user = req.user;
     const sampleId = req.params.id;
-    const { taken_by, purpose } = req.body;
+    const { taken_by, purpose, taken_at } = req.body;
 
     if (!taken_by || !purpose) {
-        return res.status(400).json({ success: false, message: "Missing 'taken_by' or 'purpose' in request body." });
+        return res.status(400).json({
+            success: false,
+            message: "Missing 'taken_by' or 'purpose' in request body."
+        });
     }
 
     try {
-        let sample = null;
-        let originalId = sampleId;
-
-        // Try finding the sample by ObjectId if valid
+        let filter = {};
         if (ObjectId.isValid(sampleId)) {
-            const objectId = new ObjectId(sampleId);
-            sample = await samplesCollection.findOne({ _id: objectId });
-            originalId = objectId; // For storing as reference
+            filter._id = new ObjectId(sampleId);
+        } else {
+            filter._id = sampleId; // fallback if _id is string
         }
 
-        // If not found or invalid ObjectId, try by string _id
-        if (!sample) {
-            sample = await samplesCollection.findOne({ _id: sampleId });
-        }
+        // Find the sample
+        const sample = await samplesCollection.findOne(filter);
 
         if (!sample) {
             return res.status(404).json({
                 success: false,
-                message: "Sample not found in active samples collection. It might be already taken or doesn't exist.",
+                message: "Sample not found."
             });
         }
 
-        const timestamp = new Date();
-        const logEntry = {
-            taken_by,
-            purpose,
-            taken_at: timestamp
-        };
+        // check eligibility of the user to take the sample - check assigned buyers and match with sample enlisted buyer name
+        const { _id, username, role, team, email } = user;
+        const query = { team_name: team };
+        const teamDetails = await teamsCollection.findOne(query);
 
-        // Remove original _id before archiving
-        const { _id, ...restOfSample } = sample;
-
-        const updatedSampleForTaken = {
-            ...restOfSample,
-            last_taken_by: taken_by,
-            last_taken_at: timestamp,
-            availability: "no",
-            taken_logs: [...(sample.taken_logs || []), logEntry],
-            original_sample_id: originalId // Keep traceability (ObjectId or string)
-        };
-
-        // Insert into takenSamples collection
-        const insertResult = await takenSamplesCollection.insertOne(updatedSampleForTaken);
-        if (!insertResult.insertedId) {
-            return res.status(500).json({ success: false, message: "Failed to archive the sample to taken samples." });
+        if (!teamDetails || !Array.isArray(teamDetails.buyers)) {
+            return res.json({
+                success: false,
+                message: "Team details not found or invalid."
+            });
         }
-        const newTakenSampleId = insertResult.insertedId;
+
+        // If sample.buyer is not in the team’s buyers array, deny
+        if (!teamDetails.buyers.includes(sample.buyer)) {
+            return res.json({
+                success: false,
+                message: `You are not eligible to take this sample.`
+            });
+        }
+        const timestamp = new Date();
+        const logEntry = { taken_by, purpose, taken_at: timestamp };
+
+        // Update the sample in place
+        const updateResult = await samplesCollection.updateOne(
+            filter,
+            {
+                $set: {
+                    last_taken_by: taken_by,
+                    last_taken_at: timestamp,
+                    availability: "no"
+                },
+                $push: {
+                    taken_logs: logEntry
+                }
+            }
+        );
+
+        if (updateResult.modifiedCount === 0) {
+            return res.status(500).json({
+                success: false,
+                message: "Failed to update sample."
+            });
+        }
 
         // Reposition samples below the current one
         await samplesCollection.updateMany(
             {
                 shelf: sample.shelf,
                 division: sample.division,
+                team: sample.team,
+                availability: "yes",
                 position: { $gt: sample.position }
             },
             { $inc: { position: -1 } }
         );
 
-        // Delete the original sample
-        const deleteResult = await samplesCollection.deleteOne({ _id: sample._id });
-        if (deleteResult.deletedCount === 0) {
-            console.error(`CRITICAL ERROR: Sample ${sampleId} moved to taken, but failed to delete from active. Manual intervention needed.`);
-            return res.status(500).json({ success: false, message: "Sample archived but failed to remove original. Contact support." });
-        }
+        // Optionally, log activity
+        await logActivity(`${taken_by} took ${sampleId} for ${purpose}`);
 
         return res.status(200).json({
             success: true,
-            message: `Sample ${sample.style} (${sample.category}) taken by ${taken_by} for "${purpose}".`,
+            message: `Sample ${sample.style} (${sample.category}) marked as taken by ${taken_by}.`,
             taken_by,
             taken_at: timestamp,
-            purpose,
-            new_taken_sample_id: newTakenSampleId
+            purpose
         });
 
     } catch (err) {
         console.error("Error in takeSample:", err);
-        return res.status(500).json({ success: false, message: "Server error occurred while taking sample." });
+        return res.status(500).json({
+            success: false,
+            message: "Server error occurred while taking sample."
+        });
     }
 };
+
 
 
 /**
@@ -613,42 +622,40 @@ exports.takeSample = async (req, res) => {
  */
 exports.putBackSample = async (req, res) => {
     console.log('PUT /samples/putback/:id');
+    console.log('user', req.user);
     const sampleId = req.params.id; // This is the _id from takenSamplesCollection
     const { position, returned_by, return_purpose } = req.body;
 
     const numericPosition = Number(position);
 
     if (!isValidObjectId(sampleId) || isNaN(numericPosition) || numericPosition < 1 || !returned_by) {
-        return res.status(400).json({ success: false, message: "Invalid sample ID, position, or missing 'returned_by'." });
+        console.log(sampleId);
+        console.log('error');
+        return res.json({ success: false, message: "Invalid sample ID, position, or missing 'returned_by'." });
     }
 
     try {
-        const objectId = new ObjectId(sampleId);
+        const convertedId = new ObjectId(sampleId);
         // Step 1: Find the sample in takenSamplesCollection using its current _id
-        const sample = await takenSamplesCollection.findOne({ _id: objectId });
+        const sample = await samplesCollection.findOne({ _id: convertedId });
         if (!sample) {
             return res.status(404).json({ success: false, message: "Sample not found in taken samples collection." });
         }
 
-        const { shelf, division } = sample;
-
-        // Step 2: Delete from takenSamplesCollection first
-        const deletionResult = await takenSamplesCollection.deleteOne({ _id: objectId });
-        if (deletionResult.deletedCount === 0) {
-            return res.status(500).json({ success: false, message: "Failed to remove sample from taken samples (might have already been returned or deleted concurrently)." });
-        }
-
-        // Step 3: Shift positions in samplesCollection for existing samples at or after the new position
+        // Reposition samples below the current one
         await samplesCollection.updateMany(
-            { shelf, division, position: { $gte: numericPosition } },
+            {
+                shelf: sample.shelf,
+                division: sample.division,
+                team: sample.team,
+                availability: "yes",
+                position: { $gte: numericPosition }
+            },
             { $inc: { position: 1 } }
         );
 
-        // Step 4: Prepare and insert back into samplesCollection (this will generate a NEW _id)
-        const { _id, original_sample_id, taken_logs, ...restOfSample } = sample; // Exclude _id and possibly original_sample_id, taken_logs from the direct copy
-
-        const restoredSample = {
-            ...restOfSample,
+        const returnedSample = {
+            ...sample,
             position: numericPosition,
             availability: "yes",
             returned_at: new Date(),
@@ -660,25 +667,28 @@ exports.putBackSample = async (req, res) => {
                     returned_at: new Date()
                 }
             ],
-            last_taken_by: null, // Clear last taken info
-            last_taken_at: null,
-            // If original_sample_id was tracked, we might want to keep it or use it as the new _id if possible,
-            // but for simplicity and new position logic, a new _id is often generated.
-            // If you want to reuse the original ID, you'd need a more complex strategy.
-            // For now, it will be a new ID unless explicitly set.
         };
 
-        const insertResult = await samplesCollection.insertOne(restoredSample);
-        if (!insertResult.insertedId) {
-            console.error('Insertion failed when putting sample back.');
-            return res.status(500).json({ success: false, message: "Failed to insert sample back into active samples." });
+        // Update the sample in place
+        const updateResult = await samplesCollection.updateOne(
+            { _id: convertedId },
+            {
+                $set: returnedSample,
+            }
+        );
+
+        if (updateResult.modifiedCount === 0) {
+            return res.status(500).json({
+                success: false,
+                message: "Failed to update sample."
+            });
         }
-        const newPutBackSampleId = insertResult.insertedId;
+
+        // await logActivity(`${user.username} kept back ${newPutBackSampleId}`);
 
         return res.status(200).json({
             success: true,
-            message: `Sample successfully put back at position ${numericPosition} on shelf ${shelf} - division ${division}.`,
-            new_sample_id: newPutBackSampleId
+            message: `Sample successfully put back at position ${numericPosition} on shelf ${sample.shelf} - division ${sample.division}.`
         });
 
     } catch (err) {
@@ -779,6 +789,7 @@ exports.restoreSample = async (req, res) => {
 exports.increasePositionsByShelfAndDivision = async (req, res) => {
     console.log('PATCH /samples/increase-positions-by-shelf-division');
     let { shelf, division, currentPosition } = req.body;
+    const user = req.user;
 
     const numericShelf = Number(shelf);
     const numericDivision = Number(division);
@@ -795,6 +806,8 @@ exports.increasePositionsByShelfAndDivision = async (req, res) => {
         const query = {
             shelf: numericShelf,
             division: numericDivision,
+            team: user.team,
+            availability: "yes",
             position: { $gte: numericCurrentPosition } // Affects samples at or greater than the given position
         };
 
@@ -828,6 +841,7 @@ exports.increasePositionsByShelfAndDivision = async (req, res) => {
  */
 exports.decreasePositionsByShelfAndDivision = async (req, res) => {
     console.log('PATCH /samples/decrease-positions-by-shelf-division');
+    const user = req.user;
     let { shelf, division, currentPosition } = req.body;
 
     const numericShelf = Number(shelf);
@@ -845,6 +859,8 @@ exports.decreasePositionsByShelfAndDivision = async (req, res) => {
         const query = {
             shelf: numericShelf,
             division: numericDivision,
+            team: user.team,
+            availability: "yes",
             position: { $gt: numericCurrentPosition } // Affects samples strictly greater than the given position
         };
 
@@ -922,57 +938,82 @@ exports.increasePositionsByAmount = async (req, res) => {
     }
 };
 
+
 /**
- * Normalizes positions (renumbers them sequentially from 1) within a given shelf and division.
+ * Normalizes positions (renumbers sequentially from 1) for available samples of the user's team
+ * within a given shelf and division.
  * Route: PATCH /api/samples/normalize-positions-in-division
  */
 exports.normalizePositions = async (req, res) => {
     console.log('PATCH /samples/normalize-positions-in-division');
-    let { shelf, division } = req.body;
 
+    const user = req.user;
+    const { shelf, division } = req.body;
+
+    // Convert to numbers and validate
     const numericShelf = parseInt(shelf);
     const numericDivision = parseInt(division);
 
     if (isNaN(numericShelf) || isNaN(numericDivision)) {
-        return res.status(400).json({ success: false, message: 'Invalid input types. Shelf and division must be numbers.' });
+        return res.status(400).json({
+            success: false,
+            message: 'Invalid input types. Shelf and division must be numbers.'
+        });
     }
 
     try {
-        // Step 1: Normalize all relevant fields to numbers using the external utility.
-        // This is crucial before sorting by position for renumbering.
+        // Optional: normalize numeric fields in the collection first
         const normalizedFieldCount = await normalizeFieldsToNumbers(samplesCollection);
 
-        // Step 2: Fetch normalized and sorted documents for given shelf & division
-        const docs = await samplesCollection.find({ shelf: numericShelf, division: numericDivision })
-            .sort({ position: 1, _id: 1 }) // Sort by position, then _id for consistent ordering
+        // Fetch only available samples for this team, shelf, and division
+        const query = {
+            shelf: numericShelf,
+            division: numericDivision,
+            team: user.team,
+            availability: "yes"
+        };
+
+        const samples = await samplesCollection.find(query)
+            .sort({ position: 1, _id: 1 }) // Sort by position and then _id
             .toArray();
 
-        // Step 3: Prepare bulk renumbering updates
-        const bulkOps = docs.map((doc, index) => ({
+        if (!samples.length) {
+            return res.status(200).json({
+                success: true,
+                message: 'No available samples found for this shelf/division/team.',
+                normalizedFieldsUpdated: normalizedFieldCount.updatedCount || 0,
+                positionsRenumbered: 0
+            });
+        }
+
+        // Prepare bulk update operations
+        const bulkOps = samples.map((sample, index) => ({
             updateOne: {
-                filter: { _id: doc._id },
+                filter: { _id: sample._id },
                 update: { $set: { position: index + 1 } }
             }
         }));
 
-        let positionsRenumberedCount = 0;
-        if (bulkOps.length > 0) {
-            const result = await samplesCollection.bulkWrite(bulkOps);
-            positionsRenumberedCount = result.modifiedCount;
-        }
+        // Execute bulk update
+        const result = await samplesCollection.bulkWrite(bulkOps);
+        const positionsRenumbered = result.modifiedCount;
 
-        res.status(200).json({
+        return res.status(200).json({
             success: true,
-            message: `Positions normalized successfully for shelf ${numericShelf}, division ${numericDivision}.`,
-            normalizedFieldsUpdated: normalizedFieldCount.updatedCount || 0, // Ensure it's a number
-            positionsRenumbered: positionsRenumberedCount
+            message: `Positions normalized successfully for shelf ${numericShelf}, division ${numericDivision}, team ${user.team}.`,
+            normalizedFieldsUpdated: normalizedFieldCount.updatedCount || 0,
+            positionsRenumbered
         });
 
     } catch (err) {
         console.error('Error in normalizePositions:', err);
-        res.status(500).json({ success: false, message: 'Server error occurred during position normalization.' });
+        return res.status(500).json({
+            success: false,
+            message: 'Server error occurred during position normalization.'
+        });
     }
 };
+
 
 // --- DELETE Operations ---
 
@@ -987,7 +1028,7 @@ exports.deleteSample = async (req, res) => {
     const userId = req.user?.id;
     const username = req.user?.username;
     const reduceOtherPositions = req.query.reducePositions === "yes"; // Convert to boolean
-    
+
     const objectId = new ObjectId(id);
 
     if (!isValidObjectId(objectId)) {
@@ -1063,8 +1104,9 @@ exports.deleteSample = async (req, res) => {
             // This case implies sample was removed by another process right before deleteOne.
             return res.status(404).json({ success: false, message: 'Sample not found for final removal from source collection (might have been deleted concurrently).' });
         }
-
         res.status(200).json({ success: true, message: `Sample ${id} deleted and moved to recycle bin` });
+
+        await logActivity(`${username} deleted ${sampleId}`);
 
     } catch (error) {
         console.error('Error in deleteSample (soft delete) controller:', error);

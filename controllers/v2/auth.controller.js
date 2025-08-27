@@ -3,6 +3,7 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 const { loginUser } = require("../../models/userModel");
 const {db} = require("../../db");
+const { logActivity } = require("../../utils/activityLogger");
 
 const JWT_SECRET = process.env.JWT_SECRET || "your_secret_key";
 
@@ -36,7 +37,6 @@ module.exports.register = async (req, res) => {
       password: hashedPassword,
       createdAt: new Date()
     });
-
     return res.json({ message: "User registered successfully" });
   } catch (err) {
     console.error("Registration error:", err);
@@ -59,6 +59,8 @@ module.exports.login = async (req, res) => {
       { expiresIn: "7d" }
     );
 
+    // storing activity
+    await logActivity(`${user.username} logged in`);
     return res.json({ token, username: user.username });
   } catch (error) {
     return res.status(400).json({ message: error.message });

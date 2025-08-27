@@ -35,6 +35,7 @@ exports.createTeam = async (req, res) => {
 
 // READ - get all teams
 exports.getAllTeams = async (req, res) => {
+  console.log('get all teams');
   try {
     const teams = await teamsCollection.find().toArray();
     res.status(200).json({ success: true, data: teams });

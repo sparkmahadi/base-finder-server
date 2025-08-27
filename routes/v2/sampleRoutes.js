@@ -28,19 +28,19 @@ router.get('/deleted-samples', samplesController.getDeletedSamples); // View del
 router.put('/deleted-samples/restore/:id', samplesController.restoreSample); // Restore a deleted sample
 
 // Sample lifecycle management (take, put back)
-router.put('/:id/take', samplesController.takeSample); // Mark a sample as 'taken'
-router.put('/putback/:id', samplesController.putBackSample); // Mark a sample as 'put back'
+router.put('/:id/take', protect, samplesController.takeSample); // Mark a sample as 'taken'
+router.put('/putback/:id', protect, samplesController.putBackSample); // Mark a sample as 'put back'
 
 // --- Position Management/Normalization Routes ---
-router.patch('/increase-positions-by-shelf-division', samplesController.increasePositionsByShelfAndDivision); // Increase positions for samples in a specific shelf/division
-router.patch('/increase-positions-by-amount', samplesController.increasePositionsByAmount); // Increase positions by a general amount
-router.patch('/decrease-positions-by-shelf-division', samplesController.decreasePositionsByShelfAndDivision); // Decrease positions for samples in a specific shelf/division
-router.patch('/normalize-positions-in-division', samplesController.normalizePositions); // Normalize positions within a division
+router.patch('/increase-positions-by-shelf-division', protect, samplesController.increasePositionsByShelfAndDivision); // Increase positions for samples in a specific shelf/division
+router.patch('/increase-positions-by-amount', protect, samplesController.increasePositionsByAmount); // Increase positions by a general amount
+router.patch('/decrease-positions-by-shelf-division', protect, samplesController.decreasePositionsByShelfAndDivision); // Decrease positions for samples in a specific shelf/division
+router.patch('/normalize-positions-in-division', protect, samplesController.normalizePositions); // Normalize positions within a division
 
 // 2. **Base Sample Routes (General)**
 router.route('/')
   .get(protect, samplesController.getAllSamples) // Get all samples
-  .post(samplesController.postSample); // Create a new sample
+  .post(protect, samplesController.postSample); // Create a new sample
 
 // 3. **Dynamic Routes (Least Specific)**
 router.route('/:id')

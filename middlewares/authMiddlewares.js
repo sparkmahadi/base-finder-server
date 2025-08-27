@@ -6,17 +6,12 @@ const JWT_SECRET = process.env.JWT_SECRET || "your_secret_key";
 const { db } = require('../db');
 const usersCollection = db.collection('users');
 
-
-// You need to import or get your usersCollection instance here
-// For example, if you have a db connection helper:
-// const { usersCollection } = require('../db'); 
-// Adjust the import according to your project structure
-
 async function protect(req, res, next) {
   console.log('hit protect');
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    console.log('from protection: user not authorized- authHeader-', authHeader);
     return res.status(401).json({ message: "Not authorized" });
   }
 
@@ -27,6 +22,7 @@ async function protect(req, res, next) {
     const userId = decoded.id || decoded._id;
 
     if (!userId) {
+      console.log('Invalid token payload: user ID missing');
       return res.status(401).json({ message: "Invalid token payload: user ID missing" });
     }
 
@@ -48,8 +44,17 @@ async function protect(req, res, next) {
 
     next();
   } catch (error) {
-    console.error('Auth middleware error:', error);
-    return res.status(401).json({ message: "Token invalid or expired" });
+    console.error("Auth middleware error:", error);
+
+    if (error.name === "TokenExpiredError") {
+      return res.status(401).json({ message: "Token expired" });
+    } else if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({ message: "Invalid token" });
+    } else if (error.name === "NotBeforeError") {
+      return res.status(401).json({ message: "Token not active yet" });
+    }
+
+    return res.status(500).json({ message: "Internal authentication error" });
   }
 }
 

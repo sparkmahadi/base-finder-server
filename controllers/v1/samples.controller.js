@@ -609,7 +609,7 @@ exports.putBackSample = async (req, res) => {
         );
 
         // Step 4: Prepare and insert back into samplesCollection (this will generate a NEW _id)
-        const { _id, original_sample_id, taken_logs, ...restOfSample } = sample; // Exclude _id and possibly original_sample_id, taken_logs from the direct copy
+        const { _id, original_sample_id, ...restOfSample } = sample; // Exclude _id and possibly original_sample_id, taken_logs from the direct copy
 
         const restoredSample = {
             ...restOfSample,
@@ -624,12 +624,6 @@ exports.putBackSample = async (req, res) => {
                     returned_at: new Date()
                 }
             ],
-            last_taken_by: null, // Clear last taken info
-            last_taken_at: null,
-            // If original_sample_id was tracked, we might want to keep it or use it as the new _id if possible,
-            // but for simplicity and new position logic, a new _id is often generated.
-            // If you want to reuse the original ID, you'd need a more complex strategy.
-            // For now, it will be a new ID unless explicitly set.
         };
 
         const insertResult = await samplesCollection.insertOne(restoredSample);
