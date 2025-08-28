@@ -199,7 +199,8 @@ exports.getSamplesByShelfAndDivision = async (req, res) => {
 exports.getTakenSamples = async (req, res) => {
     console.log('GET /taken-samples');
     try {
-        const result = await takenSamplesCollection.find().toArray();
+        const query = {availability: "no"};
+        const result = await samplesCollection.find(query).toArray();
         res.status(200).json({
             success: true,
             message: `${result.length} taken samples found`,
@@ -565,6 +566,7 @@ exports.takeSample = async (req, res) => {
             {
                 $set: {
                     last_taken_by: taken_by,
+                    last_purpose: purpose,
                     last_taken_at: timestamp,
                     availability: "no"
                 },
@@ -790,7 +792,7 @@ exports.increasePositionsByShelfAndDivision = async (req, res) => {
     console.log('PATCH /samples/increase-positions-by-shelf-division');
     let { shelf, division, currentPosition } = req.body;
     const user = req.user;
-
+console.log(user);
     const numericShelf = Number(shelf);
     const numericDivision = Number(division);
     const numericCurrentPosition = Number(currentPosition);

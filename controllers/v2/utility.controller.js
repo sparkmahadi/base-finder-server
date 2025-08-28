@@ -579,7 +579,7 @@ exports.convertFieldsToNumbers = async (req, res) => {
         if (result.modifiedCount) {
           updatedCount++;
         }
-        console.log(result, updatedCount);
+        // console.log(result, updatedCount);
       }
     }
 
