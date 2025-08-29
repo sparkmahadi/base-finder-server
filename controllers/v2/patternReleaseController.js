@@ -1,20 +1,30 @@
 // const PatternLog = require('../models/PatternLog'); // Mongoose model is no longer used
 const { ObjectId } = require('mongodb'); // Import ObjectId for handling MongoDB _id fields
-const {db} = require('../../db');
+const { db } = require('../../db');
 const patternReleaseCollection = db.collection('pattern-releases'); // Your collection name
 
 // @desc    Get all pattern logs from MongoDB collection
 // @route   GET /api/logs
 // @access  Public
 exports.getAllLogs = async (req, res) => { // Assuming db is passed
-  try {
-    // Fetch all documents, convert cursor to array, sort by date descending
-    const logs = await patternReleaseCollection.find({}).sort({ date: -1, createdAt: -1 }).toArray();
-    res.status(200).json(logs);
-  } catch (error) {
-    console.error('Error in getAllLogs:', error);
-    res.status(500).json({ message: 'Server Error: Could not retrieve logs from MongoDB' });
-  }
+    const user = req.user;
+    const user_team = user?.team
+    console.log(user);
+    try {
+        if (user?.role === 'admin') {
+            // Fetch all documents, convert cursor to array, sort by date descending
+            const logs = await patternReleaseCollection.find().sort({ date: -1, createdAt: -1 }).toArray();
+            res.status(200).json(logs);
+        }
+        else {
+            // Fetch all documents, convert cursor to array, sort by date descending
+            const logs = await patternReleaseCollection.find({ user_team: user_team }).sort({ date: -1, createdAt: -1 }).toArray();
+            res.status(200).json(logs);
+        }
+    } catch (error) {
+        console.error('Error in getAllLogs:', error);
+        res.status(500).json({ message: 'Server Error: Could not retrieve logs from MongoDB' });
+    }
 };
 
 // @desc    Create a new pattern log in MongoDB collection
@@ -33,6 +43,7 @@ exports.createLog = async (req, res) => {
             status, // New field from frontend
             added_by,
             added_at,
+            user_team,
             comments,
         } = req.body;
 
@@ -70,6 +81,7 @@ exports.createLog = async (req, res) => {
             status, // Include the new status field
             added_by: added_by || 'system', // Default or ensure user info
             added_at: added_at ? new Date(added_at) : new Date(), // Use provided or current date
+            user_team,
             createdAt: new Date(), // Automatically set creation timestamp
             updatedAt: new Date(), // Automatically set update timestamp
         };
@@ -178,25 +190,56 @@ exports.updateLog = async (req, res) => {
 // @route   DELETE /api/logs/:id
 // @access  Public
 exports.deleteLog = async (req, res) => { // Assuming db is passed
-  try {
-    const { id } = req.params;
+    try {
+        const { id } = req.params;
 
-    // Convert string ID to ObjectId
-    if (!ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'Invalid Log ID format' });
+        // Convert string ID to ObjectId
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'Invalid Log ID format' });
+        }
+        const objectId = new ObjectId(id);
+
+        // Delete the document by _id
+        const result = await patternReleaseCollection.deleteOne({ _id: objectId });
+
+        if (result.deletedCount === 0) {
+            return res.status(404).json({ message: 'Log not found' });
+        }
+
+        res.status(200).json({ message: 'Log deleted successfully from MongoDB' });
+    } catch (error) {
+        console.error('Error in deleteLog:', error);
+        res.status(500).json({ message: 'Server Error: Could not delete log from MongoDB' });
     }
-    const objectId = new ObjectId(id);
-
-    // Delete the document by _id
-    const result = await patternReleaseCollection.deleteOne({ _id: objectId });
-
-    if (result.deletedCount === 0) {
-      return res.status(404).json({ message: 'Log not found' });
-    }
-
-    res.status(200).json({ message: 'Log deleted successfully from MongoDB' });
-  } catch (error) {
-    console.error('Error in deleteLog:', error);
-    res.status(500).json({ message: 'Server Error: Could not delete log from MongoDB' });
-  }
 };
+
+
+exports.addTeamToEmptyPatterns = async (req, res) => {
+    try {
+        const { teamName } = req.body;
+
+        if (!teamName) {
+            return res.status(400).json({ message: "teamName is required" });
+        }
+
+        const result = await patternReleaseCollection.updateMany(
+            {
+                $or: [
+                    { user_team: { $exists: false } },
+                    { user_team: "" },
+                    { user_team: null }
+                ]
+            },
+            { $set: { user_team: teamName } }
+        );
+
+        res.json({
+            message: `Team name ${teamName} added successfully to ${result.modifiedCount} documents`,
+            matchedCount: result.matchedCount,
+            modifiedCount: result.modifiedCount
+        });
+    } catch (error) {
+        console.error("Error updating team:", error);
+        res.status(500).json({ message: "Server error", error });
+    }
+}

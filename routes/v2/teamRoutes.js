@@ -8,11 +8,11 @@ const { protect } = require('../../middlewares/authMiddlewares'); // Assuming 'p
 
 // Utility and Query Routes (more specific than /:id)
 router.route('/').get(teamsController.getAllTeams)
-.post(teamsController.createTeam);
+    .post(teamsController.createTeam);
 
 router.route("/:id").get(teamsController.getTeamById)
-.put(teamsController.updateTeam)
-.delete(teamsController.deleteTeam)
+    .put(teamsController.updateTeam)
+    .delete(teamsController.deleteTeam)
 
 
 module.exports = router;
