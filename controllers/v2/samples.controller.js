@@ -81,7 +81,9 @@ exports.getAllSamples = async (req, res) => {
 
         // Admin gets all samples
         if (userRole === 'admin') {
-            const allSamples = await samplesCollection.find().toArray();
+            const activeSamples = await samplesCollection.find().toArray();
+            const takenSamples = await takenSamplesCollection.find().toArray();
+            const allSamples = [...activeSamples, ...takenSamples];
 
             return res.status(200).json({
                 success: true,
@@ -199,7 +201,7 @@ exports.getSamplesByShelfAndDivision = async (req, res) => {
 exports.getTakenSamples = async (req, res) => {
     console.log('GET /taken-samples');
     try {
-        const query = {availability: "no"};
+        const query = { availability: "no" };
         const result = await samplesCollection.find(query).toArray();
         res.status(200).json({
             success: true,
@@ -792,7 +794,7 @@ exports.increasePositionsByShelfAndDivision = async (req, res) => {
     console.log('PATCH /samples/increase-positions-by-shelf-division');
     let { shelf, division, currentPosition } = req.body;
     const user = req.user;
-console.log(user);
+    console.log(user);
     const numericShelf = Number(shelf);
     const numericDivision = Number(division);
     const numericCurrentPosition = Number(currentPosition);
