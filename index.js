@@ -23,6 +23,7 @@ const sampleConflictRoutesV2 = require('./routes/v2/sampleConflictRoutes');
 const patterReleaseRoutesV2 = require('./routes/v2/patternReleaseRoutes');
 
 const teamRoutes = require('./routes/v2/teamRoutes');
+const styleRoutes = require('./routes/v2/styleRoutes');
 const activityRoutes = require('./routes/v2/activityRoutes');
 
 const { ObjectId } = require('mongodb');
@@ -342,4 +343,5 @@ app.use('/api/v2/samples-conflict', sampleConflictRoutesV2); // Mount user route
 app.use('/api/v2/pattern-release-logs', patterReleaseRoutesV2); // Mount user routes
 
 app.use('/api/v2/teams', teamRoutes);
+app.use('/api/v2/styles', styleRoutes);
 app.use('/api/v2/activities', activityRoutes);
