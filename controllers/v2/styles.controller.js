@@ -41,6 +41,26 @@ exports.getAllStyles = async (req, res) => {
   }
 };
 
+// Upload JSON Data (from Excel frontend)
+exports.uploadStyles = async (req, res) => {
+  try {
+    const { styles } = req.body; // expecting { styles: [...] }
+
+    if (!styles || !Array.isArray(styles)) {
+      return res.status(400).json({ message: "Invalid data format. Expected array." });
+    }
+
+    const result = await stylesCollection.insertMany(styles);
+    res.status(201).json({
+      message: "Styles uploaded successfully",
+      insertedCount: result.insertedCount,
+    });
+  } catch (error) {
+    console.error("Error uploading styles:", error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
 // READ - get one team by id
 exports.getStyleById = async (req, res) => {
   try {

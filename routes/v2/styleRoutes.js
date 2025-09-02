@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../../middlewares/authMiddlewares'); // Assuming 'protect' is for authentication
-const { createStyle, getAllStyles, getStyleById, updateStyle, deleteStyle } = require('../../controllers/v2/styles.controller');
+const { createStyle, getAllStyles, getStyleById, updateStyle, deleteStyle, uploadStyles } = require('../../controllers/v2/styles.controller');
 
 // --- Public Routes ---
 
@@ -10,6 +10,8 @@ const { createStyle, getAllStyles, getStyleById, updateStyle, deleteStyle } = re
 router.route('/')
     .get(protect, getAllStyles)
     .post(protect, createStyle);
+
+router.route("/excel-upload").post(uploadStyles)
 
 router.route("/:id").get(getStyleById)
     .put(updateStyle)
