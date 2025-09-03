@@ -13,6 +13,7 @@ router.route('/')
 
 router.route("/excel-upload").post(uploadStyles)
 
+// dynamic routes
 router.route("/:id").get(getStyleById)
     .put(updateStyle)
     .delete(deleteStyle)
