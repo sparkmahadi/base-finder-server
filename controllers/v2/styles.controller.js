@@ -81,7 +81,7 @@ exports.getStyleById = async (req, res) => {
   }
 };
 
-exports.updateStyle = async (req, res) => {
+exports.updateBasicStyle = async (req, res) => {
   console.log('Received data for update:', req.body);
   try {
     const styleId = req.params.id;
@@ -96,36 +96,6 @@ exports.updateStyle = async (req, res) => {
     }
 
     const updateOperations = {};
-
-    // 1. Logic for pushing to 'sampling' and 'prod' arrays
-    if (sampling || prod) {
-      updateOperations.$push = {};
-
-      if (sampling) {
-        const { date, pattern_id } = sampling;
-        if (date && pattern_id) {
-          updateOperations.$push.sampling = {
-            pp: date,
-            pattern_id: pattern_id,
-          };
-        }
-      }
-
-      if (prod) {
-        const { pro, pro_sc } = prod;
-        if (pro || pro_sc) {
-          const newProdData = {};
-          if (pro) newProdData.pro = pro;
-          if (pro_sc) newProdData.pro_sc = pro_sc;
-          updateOperations.$push.prod = newProdData;
-        }
-      }
-
-      // If no valid data for $push, remove the operator
-      if (Object.keys(updateOperations.$push).length === 0) {
-        delete updateOperations.$push;
-      }
-    }
 
     // 2. Logic for updating other basic fields using $set
     const fieldsToSet = {};
@@ -163,53 +133,259 @@ exports.updateStyle = async (req, res) => {
   }
 };
 
+
+// exports.updateStyleSampling = async (req, res) => {
+//   console.log("Received sampling data for update:", req.body);
+
+//   try {
+//     const styleId = req.params.id;
+//     const { action, updatedSampling, status, date, pattern_id, ...otherFields } = req.body;
+
+//     // --- Validate styleId ---
+//     if (!styleId) {
+//       return res.status(400).json({ success: false, message: "Style ID is missing." });
+//     }
+//     if (!ObjectId.isValid(styleId)) {
+//       return res.status(400).json({ success: false, message: "Invalid Style ID format." });
+//     }
+
+//     let updateQuery;
+
+//     switch (action) {
+//       case "replace":
+//         // --- Replace entire sampling array ---
+//         if (!Array.isArray(updatedSampling)) {
+//           return res.status(400).json({ success: false, message: "Invalid sampling array." });
+//         }
+
+//         const replacedArray = updatedSampling.map(item => ({
+//           ...item,
+//           updated_by: req.body.updated_by,
+//           updated_at: req.body.updated_at,
+//         }));
+
+//         updateQuery = { $set: { sampling: replacedArray } };
+//         break;
+
+//       case "delete":
+//         // --- Delete a sampling based on dynamic field (like PP/Test) ---
+//         const keyToDelete = Object.keys(otherFields)[0];
+//         const valueToDelete = otherFields[keyToDelete];
+
+//         updateQuery = {
+//           $pull: { sampling: { [keyToDelete]: valueToDelete } },
+//         };
+//         break;
+
+//       case "add":
+//         // --- Add new sampling item ---
+//         if (!status || !date || !pattern_id) {
+//           console.log(status, date, pattern_id);
+//           return res.status(400).json({
+//             success: false,
+//             message: 'Missing "status", "date", or "pattern_id" in request body.',
+//           });
+//         }
+
+//         const newSamplingItem = {
+//           [status]: date,
+//           pattern_id,
+//           comments: req.body.comments,
+//           added_by: req.body.added_by,
+//           added_at: req.body.added_at,
+//         };
+
+//         updateQuery = { $push: { sampling: newSamplingItem } };
+//         break;
+
+//       case "edit":
+//         // --- Edit an existing sampling ---
+//         if (!pattern_id) {
+//           return res.status(400).json({ success: false, message: "Missing pattern_id for edit." });
+//         }
+
+//         const updateFields = {};
+//         if (status && date) updateFields[status] = date;
+//         if (req.body.comments) updateFields.comments = req.body.comments;
+//         if (req.body.added_by) updateFields.added_by = req.body.added_by;
+//         if (req.body.added_at) updateFields.added_at = req.body.added_at;
+
+//         updateQuery = { $set: { "sampling.$": { pattern_id, ...updateFields } } };
+//         break;
+
+//       default:
+//         return res.status(400).json({ success: false, message: "Invalid action." });
+//     }
+
+//     // --- Build filter ---
+//     const filter = { _id: new ObjectId(styleId) };
+//     if (action === "edit") filter["sampling.pattern_id"] = pattern_id;
+
+//     // --- Execute update ---
+//     const result = await stylesCollection.updateOne(filter, updateQuery);
+
+//     if (result.matchedCount === 0) {
+//       return res.status(404).json({ success: false, message: "Style or sampling not found." });
+//     }
+
+//     // --- Success response ---
+//     const messages = {
+//       replace: "Sampling array replaced successfully.",
+//       delete: "Sampling deleted successfully.",
+//       edit: "Sampling updated successfully.",
+//       add: "Sampling added successfully.",
+//     };
+
+//     return res.status(200).json({
+//       success: true,
+//       message: messages[action] || "Sampling updated successfully.",
+//       result,
+//     });
+
+//   } catch (error) {
+//     console.error("Error updating style sampling:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Server error.",
+//       error: error.message,
+//     });
+//   }
+// };
+
+
+
+
+
+// DELETE - delete a team by id
+
 exports.updateStyleSampling = async (req, res) => {
-  console.log('Received sampling data for update:', req.body);
+  console.log("Received sampling data for update:", req.body);
+
   try {
     const styleId = req.params.id;
-    // Destructure all necessary fields from the request body
-    const { status, date, pattern_id } = req.body;
+    const { action, updatedFields, field, status, date, pattern_id, ...otherFields } = req.body;
 
-    // Basic validation for the style ID
+    // --- Validate styleId ---
     if (!styleId) {
-      return res.status(400).json({ success: false, message: 'Style ID is missing.' });
+      return res.status(400).json({ success: false, message: "Style ID is missing." });
     }
     if (!ObjectId.isValid(styleId)) {
-      return res.status(400).json({ success: false, message: 'Invalid Style ID format.' });
+      return res.status(400).json({ success: false, message: "Invalid Style ID format." });
     }
 
-    // Validate that the required fields for the new sampling item are present
-    if (!status || !date || !pattern_id) {
-      return res.status(400).json({ success: false, message: 'Missing "status", "date", or "pattern_id" in request body.' });
+    let updateQuery;
+
+    switch (action) {
+      case "replaceFields":
+  if (!updatedFields || typeof updatedFields !== "object") {
+    return res.status(400).json({ success: false, message: "Invalid or missing updatedFields object." });
+  }
+
+  const currentDoc = await stylesCollection.findOne({ _id: new ObjectId(styleId) });
+  const fieldsWithMeta = {};
+
+  for (const key in updatedFields) {
+    if (!updatedFields.hasOwnProperty(key)) continue;
+
+    const newValue = updatedFields[key];
+    const currentValue = currentDoc[key];
+
+    // If value is an object (like PP)
+    if (typeof newValue === "object" && newValue !== null) {
+      const updatedNested = {};
+      for (const subKey in newValue) {
+        if (!newValue.hasOwnProperty(subKey)) continue;
+
+        // Only add updated_by/updated_at to changed subfields
+        if (currentValue?.[subKey] !== newValue[subKey]) {
+          updatedNested[subKey] = newValue[subKey];
+          updatedNested.updated_by = req.body.updated_by;
+          updatedNested.updated_at = req.body.updated_at;
+        } else {
+          updatedNested[subKey] = currentValue[subKey]; // keep original
+        }
+      }
+      fieldsWithMeta[key] = updatedNested;
+    } else {
+      // primitive field
+      if (newValue !== currentValue) {
+        fieldsWithMeta[key] = newValue;
+        fieldsWithMeta[`${key}_updated_by`] = req.body.updated_by;
+        fieldsWithMeta[`${key}_updated_at`] = req.body.updated_at;
+      }
+    }
+  }
+
+  if (Object.keys(fieldsWithMeta).length === 0) {
+    return res.status(200).json({ success: true, message: "No changes detected." });
+  }
+
+  updateQuery = { $set: fieldsWithMeta };
+  break;
+
+
+      case "deleteField":
+        // --- Remove a specific field ---
+        if (!field) {
+          return res.status(400).json({ success: false, message: "Missing field name to delete." });
+        }
+        updateQuery = { $unset: { [field]: "" } };
+        break;
+
+      case "add":
+        if (!status || !date) {
+          return res.status(400).json({
+            success: false,
+            message: 'Missing "status" or "date" in request body.',
+          });
+        }
+
+        const newSamplingField = {
+          [status]: {
+            date,
+            pattern_id: pattern_id,
+            added_by: req.body.added_by || "",
+            added_at: req.body.added_at || new Date().toISOString(),
+          },
+        };
+
+        updateQuery = { $set: newSamplingField };
+        break;
+
+      default:
+        return res.status(400).json({ success: false, message: "Invalid action." });
     }
 
-    // Construct the new object to be pushed with a dynamic key using bracket notation
-    const newSamplingItem = {
-      [status]: date,
-      pattern_id: pattern_id,
-      comments: req.body.comments, // Include other relevant fields if needed
-      added_by: req.body.added_by,
-      added_at: req.body.added_at
-    };
-
-    const result = await stylesCollection.updateOne(
-      { _id: new ObjectId(styleId) },
-      { $push: { sampling: newSamplingItem } }
-    );
+    // --- Execute update ---
+    const filter = { _id: new ObjectId(styleId) };
+    const result = await stylesCollection.updateOne(filter, updateQuery);
 
     if (result.matchedCount === 0) {
-      return res.status(404).json({ success: false, message: 'Style not found.' });
+      return res.status(404).json({ success: false, message: "Style not found." });
     }
 
-    return res.status(200).json({ success: true, message: 'Sampling data added successfully.', result });
+    // --- Success messages ---
+    const messages = {
+      replaceFields: "Fields updated successfully.",
+      deleteField: "Field deleted successfully.",
+    };
 
+    return res.status(200).json({
+      success: true,
+      message: messages[action] || "Update successful.",
+      result,
+    });
   } catch (error) {
-    console.error('Error updating style:', error);
-    return res.status(500).json({ success: false, message: 'Server error.', error: error.message });
+    console.error("Error updating style sampling:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error.",
+      error: error.message,
+    });
   }
 };
 
-// DELETE - delete a team by id
+
 exports.deleteStyle = async (req, res) => {
   try {
     const id = req.params.id;

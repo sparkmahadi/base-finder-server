@@ -66,9 +66,9 @@ exports.createLog = async (req, res) => {
             status: status
         });
 
-        if (existingLog) {
-            return res.status(409).json({ message: 'A log with the same Date, Buyer, Style, Category, Body, and Size already exists.' });
-        }
+        // if (existingLog) {
+        //     return res.status(409).json({ message: 'A log with the same Date, Buyer, Style, Category, Body, and Size already exists.' });
+        // }
         // --- End Duplicate Check ---
 
         const newLog = {

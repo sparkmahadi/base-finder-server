@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../../middlewares/authMiddlewares'); // Assuming 'protect' is for authentication
-const { createStyle, getAllStyles, getStyleById, updateStyle, deleteStyle, uploadStyles, updateStyleSampling } = require('../../controllers/v2/styles.controller');
+const { createStyle, getAllStyles, getStyleById, deleteStyle, uploadStyles, updateStyleSampling, updateBasicStyle } = require('../../controllers/v2/styles.controller');
 
 // --- Public Routes ---
 
@@ -17,7 +17,7 @@ router.route("/update-style-sampling/:id").put(updateStyleSampling);
 
 // dynamic routes
 router.route("/:id").get(getStyleById)
-    .put(updateStyle)
+    .put(updateBasicStyle)
     .delete(deleteStyle)
 
 
