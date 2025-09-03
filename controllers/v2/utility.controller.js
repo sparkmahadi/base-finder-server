@@ -357,7 +357,7 @@ module.exports.getStatuses = async (req, res) => {
         data: statuses,
       });
     } else {
-      return res.status(404).json({
+      return res.status(405).json({
         success: false,
         message: 'No statuses found.',
         data: [],

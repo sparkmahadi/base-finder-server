@@ -49,7 +49,7 @@ exports.createLog = async (req, res) => {
 
         // Basic validation for essential fields
         if (!date || !buyer || !style || !item || !status) {
-            return res.status(400).json({ message: 'Please include all required fields: date, buyer, style, category, and status.' });
+            return res.json({ success: false, message: 'Sorry, Please include all required fields: date, buyer, style, category, and status.' });
         }
 
         // Convert date string to Date object
@@ -63,6 +63,7 @@ exports.createLog = async (req, res) => {
             item: item, // Category
             body: body || null, // Handle optional body
             size: size || null, // Handle optional size
+            status: status
         });
 
         if (existingLog) {
@@ -89,7 +90,8 @@ exports.createLog = async (req, res) => {
         const result = await patternReleaseCollection.insertOne(newLog);
 
         // Return the created log with its generated _id
-        res.status(201).json({ _id: result.insertedId, ...newLog });
+        const data = { _id: result.insertedId, ...newLog };
+        res.status(201).json({data, success: true, message: 'log added successfully'});
     } catch (error) {
         console.error('Error in createLog:', error);
         res.status(500).json({ message: 'Server Error: Could not create log.' });
