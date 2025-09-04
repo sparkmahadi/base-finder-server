@@ -91,7 +91,7 @@ exports.createLog = async (req, res) => {
 
         // Return the created log with its generated _id
         const data = { _id: result.insertedId, ...newLog };
-        res.status(201).json({data, success: true, message: 'log added successfully'});
+        res.status(201).json({ data, success: true, message: 'log added successfully' });
     } catch (error) {
         console.error('Error in createLog:', error);
         res.status(500).json({ message: 'Server Error: Could not create log.' });
@@ -215,6 +215,26 @@ exports.deleteLog = async (req, res) => { // Assuming db is passed
     }
 };
 
+
+// READ - get one team by id
+exports.getPatternById = async (req, res) => {
+    try {
+        const id = req.params.id;
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).json({ success: false, message: 'Invalid ID' });
+        }
+
+        const pattern = await patternReleaseCollection.findOne({ _id: new ObjectId(id) });
+        if (!pattern) {
+            return res.status(404).json({ success: false, message: 'pattern not found' });
+        }
+
+        res.status(200).json({ success: true, data: pattern });
+    } catch (error) {
+        console.error('Get pattern by ID error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
 
 exports.addTeamToEmptyPatterns = async (req, res) => {
     try {

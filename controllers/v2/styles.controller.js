@@ -134,129 +134,6 @@ exports.updateBasicStyle = async (req, res) => {
 };
 
 
-// exports.updateStyleSampling = async (req, res) => {
-//   console.log("Received sampling data for update:", req.body);
-
-//   try {
-//     const styleId = req.params.id;
-//     const { action, updatedSampling, status, date, pattern_id, ...otherFields } = req.body;
-
-//     // --- Validate styleId ---
-//     if (!styleId) {
-//       return res.status(400).json({ success: false, message: "Style ID is missing." });
-//     }
-//     if (!ObjectId.isValid(styleId)) {
-//       return res.status(400).json({ success: false, message: "Invalid Style ID format." });
-//     }
-
-//     let updateQuery;
-
-//     switch (action) {
-//       case "replace":
-//         // --- Replace entire sampling array ---
-//         if (!Array.isArray(updatedSampling)) {
-//           return res.status(400).json({ success: false, message: "Invalid sampling array." });
-//         }
-
-//         const replacedArray = updatedSampling.map(item => ({
-//           ...item,
-//           updated_by: req.body.updated_by,
-//           updated_at: req.body.updated_at,
-//         }));
-
-//         updateQuery = { $set: { sampling: replacedArray } };
-//         break;
-
-//       case "delete":
-//         // --- Delete a sampling based on dynamic field (like PP/Test) ---
-//         const keyToDelete = Object.keys(otherFields)[0];
-//         const valueToDelete = otherFields[keyToDelete];
-
-//         updateQuery = {
-//           $pull: { sampling: { [keyToDelete]: valueToDelete } },
-//         };
-//         break;
-
-//       case "add":
-//         // --- Add new sampling item ---
-//         if (!status || !date || !pattern_id) {
-//           console.log(status, date, pattern_id);
-//           return res.status(400).json({
-//             success: false,
-//             message: 'Missing "status", "date", or "pattern_id" in request body.',
-//           });
-//         }
-
-//         const newSamplingItem = {
-//           [status]: date,
-//           pattern_id,
-//           comments: req.body.comments,
-//           added_by: req.body.added_by,
-//           added_at: req.body.added_at,
-//         };
-
-//         updateQuery = { $push: { sampling: newSamplingItem } };
-//         break;
-
-//       case "edit":
-//         // --- Edit an existing sampling ---
-//         if (!pattern_id) {
-//           return res.status(400).json({ success: false, message: "Missing pattern_id for edit." });
-//         }
-
-//         const updateFields = {};
-//         if (status && date) updateFields[status] = date;
-//         if (req.body.comments) updateFields.comments = req.body.comments;
-//         if (req.body.added_by) updateFields.added_by = req.body.added_by;
-//         if (req.body.added_at) updateFields.added_at = req.body.added_at;
-
-//         updateQuery = { $set: { "sampling.$": { pattern_id, ...updateFields } } };
-//         break;
-
-//       default:
-//         return res.status(400).json({ success: false, message: "Invalid action." });
-//     }
-
-//     // --- Build filter ---
-//     const filter = { _id: new ObjectId(styleId) };
-//     if (action === "edit") filter["sampling.pattern_id"] = pattern_id;
-
-//     // --- Execute update ---
-//     const result = await stylesCollection.updateOne(filter, updateQuery);
-
-//     if (result.matchedCount === 0) {
-//       return res.status(404).json({ success: false, message: "Style or sampling not found." });
-//     }
-
-//     // --- Success response ---
-//     const messages = {
-//       replace: "Sampling array replaced successfully.",
-//       delete: "Sampling deleted successfully.",
-//       edit: "Sampling updated successfully.",
-//       add: "Sampling added successfully.",
-//     };
-
-//     return res.status(200).json({
-//       success: true,
-//       message: messages[action] || "Sampling updated successfully.",
-//       result,
-//     });
-
-//   } catch (error) {
-//     console.error("Error updating style sampling:", error);
-//     return res.status(500).json({
-//       success: false,
-//       message: "Server error.",
-//       error: error.message,
-//     });
-//   }
-// };
-
-
-
-
-
-// DELETE - delete a team by id
 
 exports.updateStyleSampling = async (req, res) => {
   console.log("Received sampling data for update:", req.body);
@@ -277,51 +154,51 @@ exports.updateStyleSampling = async (req, res) => {
 
     switch (action) {
       case "replaceFields":
-  if (!updatedFields || typeof updatedFields !== "object") {
-    return res.status(400).json({ success: false, message: "Invalid or missing updatedFields object." });
-  }
-
-  const currentDoc = await stylesCollection.findOne({ _id: new ObjectId(styleId) });
-  const fieldsWithMeta = {};
-
-  for (const key in updatedFields) {
-    if (!updatedFields.hasOwnProperty(key)) continue;
-
-    const newValue = updatedFields[key];
-    const currentValue = currentDoc[key];
-
-    // If value is an object (like PP)
-    if (typeof newValue === "object" && newValue !== null) {
-      const updatedNested = {};
-      for (const subKey in newValue) {
-        if (!newValue.hasOwnProperty(subKey)) continue;
-
-        // Only add updated_by/updated_at to changed subfields
-        if (currentValue?.[subKey] !== newValue[subKey]) {
-          updatedNested[subKey] = newValue[subKey];
-          updatedNested.updated_by = req.body.updated_by;
-          updatedNested.updated_at = req.body.updated_at;
-        } else {
-          updatedNested[subKey] = currentValue[subKey]; // keep original
+        if (!updatedFields || typeof updatedFields !== "object") {
+          return res.status(400).json({ success: false, message: "Invalid or missing updatedFields object." });
         }
-      }
-      fieldsWithMeta[key] = updatedNested;
-    } else {
-      // primitive field
-      if (newValue !== currentValue) {
-        fieldsWithMeta[key] = newValue;
-        fieldsWithMeta[`${key}_updated_by`] = req.body.updated_by;
-        fieldsWithMeta[`${key}_updated_at`] = req.body.updated_at;
-      }
-    }
-  }
 
-  if (Object.keys(fieldsWithMeta).length === 0) {
-    return res.status(200).json({ success: true, message: "No changes detected." });
-  }
+        const currentDoc = await stylesCollection.findOne({ _id: new ObjectId(styleId) });
+        const fieldsWithMeta = {};
 
-  updateQuery = { $set: fieldsWithMeta };
-  break;
+        for (const key in updatedFields) {
+          if (!updatedFields.hasOwnProperty(key)) continue;
+
+          const newValue = updatedFields[key];
+          const currentValue = currentDoc[key];
+
+          // If value is an object (like PP)
+          if (typeof newValue === "object" && newValue !== null) {
+            const updatedNested = {};
+            for (const subKey in newValue) {
+              if (!newValue.hasOwnProperty(subKey)) continue;
+
+              // Only add updated_by/updated_at to changed subfields
+              if (currentValue?.[subKey] !== newValue[subKey]) {
+                updatedNested[subKey] = newValue[subKey];
+                updatedNested.updated_by = req.body.updated_by;
+                updatedNested.updated_at = req.body.updated_at;
+              } else {
+                updatedNested[subKey] = currentValue[subKey]; // keep original
+              }
+            }
+            fieldsWithMeta[key] = updatedNested;
+          } else {
+            // primitive field
+            if (newValue !== currentValue) {
+              fieldsWithMeta[key] = newValue;
+              fieldsWithMeta[`${key}_updated_by`] = req.body.updated_by;
+              fieldsWithMeta[`${key}_updated_at`] = req.body.updated_at;
+            }
+          }
+        }
+
+        if (Object.keys(fieldsWithMeta).length === 0) {
+          return res.status(200).json({ success: true, message: "No changes detected." });
+        }
+
+        updateQuery = { $set: fieldsWithMeta };
+        break;
 
 
       case "deleteField":
@@ -377,6 +254,126 @@ exports.updateStyleSampling = async (req, res) => {
     });
   } catch (error) {
     console.error("Error updating style sampling:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error.",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Controller to manage production records within a style document.
+ * This function handles adding, editing, and deleting records from the `productionRecords` array.
+ * @param {object} req - The request object.
+ * @param {object} res - The response object.
+ */
+exports.updateStyleByProduction = async (req, res) => {
+  console.log("Received production data for update:", req.body);
+
+  try {
+    const styleId = req.params.id;
+    const { action, ...payload } = req.body;
+    const currentUser = "sparkm"; // In a real app, this would come from an authenticated user session (e.g., req.user.username)
+
+    // --- Validate styleId ---
+    if (!styleId || !ObjectId.isValid(styleId)) {
+      return res.status(400).json({ success: false, message: "Invalid or missing Style ID." });
+    }
+
+    let updateQuery;
+    let message;
+
+    switch (action) {
+      case "add": {
+        const { factory_name, factory_code, po_size_range, totalQuantity } = payload;
+        if (!factory_name || !totalQuantity) {
+          return res.status(400).json({ success: false, message: "Missing required fields for adding a record." });
+        }
+
+        const newRecord = {
+          factory_name,
+          factory_code: factory_code || "",
+          po_size_range: po_size_range || "",
+          totalQuantity: totalQuantity,
+          added_by: currentUser,
+          added_at: new Date().toISOString(),
+        };
+
+        // Use $push to add a new record to the array
+        updateQuery = { $push: { productionRecords: newRecord } };
+        message = "Production record added successfully.";
+        break;
+      }
+
+      case "edit": {
+        const { recordToEdit, updatedData } = payload;
+        if (!recordToEdit || !updatedData || !recordToEdit.added_by || !recordToEdit.added_at) {
+          return res.status(400).json({ success: false, message: "Missing required fields for editing a record." });
+        }
+
+        const updatedRecord = {
+          ...updatedData,
+          added_by: recordToEdit.added_by,
+          added_at: recordToEdit.added_at,
+          updated_by: currentUser,
+          updated_at: new Date().toISOString(),
+        };
+
+        // Use $set with arrayFilters to update a specific element in the array
+        updateQuery = {
+          $set: {
+            "productionRecords.$[record]": updatedRecord,
+          },
+        };
+        // Define the filter to find the correct record by its unique added_by and added_at combination
+        req.body.arrayFilters = [
+          { "record.added_by": recordToEdit.added_by, "record.added_at": recordToEdit.added_at },
+        ];
+        message = "Production record updated successfully.";
+        break;
+      }
+
+      case "delete": {
+        const { recordToDelete } = payload;
+        if (!recordToDelete || !recordToDelete.added_by || !recordToDelete.added_at) {
+          return res.status(400).json({ success: false, message: "Missing required fields for deleting a record." });
+        }
+
+        // Use $pull to remove a record from the array based on its unique fields
+        updateQuery = {
+          $pull: {
+            productionRecords: {
+              added_by: recordToDelete.added_by,
+              added_at: recordToDelete.added_at,
+            },
+          },
+        };
+        message = "Production record deleted successfully.";
+        break;
+      }
+
+      default:
+        return res.status(400).json({ success: false, message: "Invalid action specified." });
+    }
+
+    // --- Execute the update query ---
+    const filter = { _id: new ObjectId(styleId) };
+    const options = req.body.arrayFilters ? { arrayFilters: req.body.arrayFilters } : {};
+
+    const result = await stylesCollection.updateOne(filter, updateQuery, options);
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ success: false, message: "Style not found." });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message,
+      result,
+    });
+  } catch (error) {
+    console.error("Error updating production records:", error);
     return res.status(500).json({
       success: false,
       message: "Server error.",
