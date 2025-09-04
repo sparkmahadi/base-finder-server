@@ -12,6 +12,7 @@ router.route("/buyers").post(utilityController.postBuyer);
 router.route("/statuses").post(utilityController.postStatus);
 router.route("/shelfs").post(utilityController.postShelf);
 router.route("/divisions").post(utilityController.postDivision);
+router.route("/seasons").post(utilityController.postSeason);
 
 router.get('/buyers', protect, utilityController.getBuyers);
 router.get('/statuses', utilityController.getStatuses);

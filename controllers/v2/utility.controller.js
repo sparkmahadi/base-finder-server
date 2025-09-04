@@ -40,11 +40,12 @@ module.exports.deleteCategory = async (req, res) => {
 };
 
 module.exports.postCategory = async (req, res) => {
+  console.log('hit post category with data', req.body);
   const { cat_name, status, createdBy } = req.body;
   const totalSamples = req.body.totalSamples || 0;
   console.log(cat_name, status, totalSamples, createdBy);
 
-  if (!cat_name || !status || totalSamples === undefined || totalSamples === null || !createdBy) {
+  if (!cat_name || !createdBy) {
     console.log('entered error');
     return res.status(400).json({ success: false, message: 'Missing required fields' });
   }
@@ -130,6 +131,55 @@ module.exports.postBuyer = async (req, res) => {
     }
   } catch (error) {
     console.error('Error creating buyer:', error);
+    return res.status(500).json({ success: false, message: 'Server error', error: error.message });
+  }
+};
+
+// Controller for creating a new season
+module.exports.postSeason = async (req, res) => {
+  console.log("post season");
+  const { value, createdBy } = req.body; // Destructure 'createdBy' from req.body
+  console.log(value, createdBy);
+  if (!value || value.trim() === '') {
+    return res.status(400).json({ success: false, message: 'Season name is required' });
+  }
+  // Add validation for createdBy
+  if (!createdBy || createdBy.trim() === '') {
+    return res.status(400).json({ success: false, message: 'Creator information is required' });
+  }
+
+  try {
+    const existingBuyer = await utilitiesCollection.findOne({
+      utility_type: 'season', // Renamed from 'type'
+      value: value.trim(),    // Renamed from 'name'
+    });
+
+    if (existingBuyer) {
+      return res.send({
+        success: false,
+        redirect: true,
+        message: 'A season with this name already exists',
+      });
+    }
+
+    const newSeason = {
+      utility_type: 'season',
+      value: value.trim(),
+      createdBy: createdBy.trim(), // Assign createdBy
+      createdAt: new Date()
+    };
+    const result = await utilitiesCollection.insertOne(newSeason);
+
+    if (result.acknowledged) {
+      return res.status(201).json({
+        success: true,
+        message: 'Season added successfully!',
+      });
+    } else {
+      return res.status(500).json({ success: false, message: 'Insertion failed' });
+    }
+  } catch (error) {
+    console.error('Error creating season:', error);
     return res.status(500).json({ success: false, message: 'Server error', error: error.message });
   }
 };
