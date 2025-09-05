@@ -1179,55 +1179,6 @@ exports.deleteAllSamplePermanently = async (req, res) => {
     }
 }
 
-// old controller was only specific for samples collection. deprecated by mahadi
-// exports.addSampleIdsToExistingDocuments = async (req, res) => {
-//     console.log("addSampleIdsToExistingDocuments");
-//     try {
-
-//         // Fetch all documents from the collection
-//         // We'll sort them by _id to ensure a consistent order if the script is re-run,
-//         // although for initial assignment, any consistent order works.
-//         const existingSamplesCursor = samplesCollection.find({ sample_id: { $exists: false } }).sort({ _id: 1 });
-
-//         let count = 0;
-//         let bulkOps = []; // Use bulk operations for efficiency
-
-//         while (await existingSamplesCursor.hasNext()) {
-//             const doc = await existingSamplesCursor.next();
-//             count++;
-//             // Generate the unique sample_id based on the current count
-//             const uniqueSampleId = `sample${count.toString().padStart(4, '0')}`;
-
-//             // Add an update operation to the bulkOps array
-//             bulkOps.push({
-//                 updateOne: {
-//                     filter: { _id: doc._id },
-//                     update: { $set: { sample_id: uniqueSampleId } }
-//                 }
-//             });
-
-//             // Execute bulk operations in batches to avoid overwhelming the database
-//             if (bulkOps.length === 500) { // Process in batches of 500 documents
-//                 const result = await samplesCollection.bulkWrite(bulkOps);
-//                 console.log(`Executed bulk write for ${bulkOps.length} documents. Updated: ${result.modifiedCount}`);
-//                 bulkOps = []; // Reset bulkOps array
-//             }
-//         }
-
-//         // Execute any remaining bulk operations
-//         if (bulkOps.length > 0) {
-//             const result = await samplesCollection.bulkWrite(bulkOps);
-//             console.log(`Executed final bulk write for ${bulkOps.length} documents. Updated: ${result.modifiedCount}`);
-//         }
-
-//         console.log(`Migration complete! Added 'sample_id' to ${count} existing documents.`);
-//         res.json({ success: true, message: `Migration complete! Added 'sample_id' to ${count} existing documents.` })
-
-//     } catch (error) {
-//         console.error("Error during migration:", error);
-//     }
-// }
-
 exports.addSampleIdsToExistingDocuments = async (req, res) => {
     console.log("Starting addSampleIdsToExistingDocuments...");
 

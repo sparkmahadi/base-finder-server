@@ -226,7 +226,7 @@ exports.getPatternById = async (req, res) => {
 
         const pattern = await patternReleaseCollection.findOne({ _id: new ObjectId(id) });
         if (!pattern) {
-            return res.status(404).json({ success: false, message: 'pattern not found' });
+            return res.json({ success: false, message: 'pattern not found' });
         }
 
         res.status(200).json({ success: true, data: pattern });
