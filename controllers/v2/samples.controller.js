@@ -2,6 +2,9 @@ const { db } = require("../../db");
 const { ObjectId } = require("mongodb");
 const normalizeFieldsToNumbers = require('../../utils/nomalizeFieldsToNumbers');
 const { logActivity } = require("../../utils/activityLogger");
+const { checkUserVerification } = require("../../utils/userVerificationChecker");
+const { checkTeamEligibility } = require("../../utils/teamChecker");
+const { getUserTeam } = require("../../utils/teamUtils");
 
 // Collection References
 const samplesCollection = db.collection("samples");
@@ -70,17 +73,19 @@ const ensureNumericPositionFields = async (collection) => {
  * Route: GET /api/samples/
  */
 exports.getAllSamples = async (req, res) => {
+    const user = req.user;
     const userId = req.user?._id || req.user?.id;
+    if (!userId) {
+        return res.status(401).json({ success: false, message: 'Unauthorized: User not found in request' });
+    }
     console.log('GET /samples (all samples for user - )', userId);
+
 
     try {
         const userRole = req.user?.role;
-        if (!userId) {
-            return res.status(401).json({ success: false, message: 'Unauthorized: User not found in request' });
-        }
 
         // Admin gets all samples
-        if (userRole === 'admin') {
+        if (userRole === 'superuser') {
             const activeSamples = await samplesCollection.find().toArray();
             const takenSamples = await takenSamplesCollection.find().toArray();
             const allSamples = [...activeSamples, ...takenSamples];
@@ -92,17 +97,11 @@ exports.getAllSamples = async (req, res) => {
             });
         }
 
-        // 1️⃣ Find the team document that contains this user as member
-        const team = await teamsCollection.findOne({
-            'members.user_id': userId
-        });
+        const { success, team, buyersList, message } = await getUserTeam(user);
 
-        if (!team) {
-            return res.status(404).json({ success: false, message: 'Team not found for this user' });
+        if (!success) {
+            return res.json({ success: false, message });
         }
-
-        // 2️⃣ Use the buyers array from the team document to filter samples
-        const buyersList = team.buyers || [];
 
         // 3️⃣ Query samplesCollection and takenSamplesCollection by buyer in buyersList
         const activeSamples = await samplesCollection.find({ buyer: { $in: buyersList } }).toArray();
@@ -128,7 +127,17 @@ exports.getAllSamples = async (req, res) => {
 
 exports.getSampleDetails = async (req, res) => {
     console.log('GET /samples/:id');
+    const user = req.user;
     const { id } = req.params;
+
+    // ✅ Reusable check
+    const verification = await checkUserVerification(user);
+    if (!verification.eligible) {
+        return res.status(403).json({
+            success: false,
+            message: verification.message
+        });
+    }
 
     try {
         let sample = null;
@@ -146,13 +155,23 @@ exports.getSampleDetails = async (req, res) => {
         }
 
         if (sample) {
+
+            // ✅ Reusable eligibility check
+            const eligibility = await checkTeamEligibility(user, sample.buyer);
+            if (!eligibility.eligible) {
+                return res.json({
+                    success: false,
+                    message: eligibility.message
+                });
+            }
+
             return res.status(200).json({
                 success: true,
                 message: `Sample details found in ${collectionSource}`,
                 sample,
             });
         } else {
-            return res.status(404).json({ success: false, message: 'Sample not found' });
+            return res.json({ success: false, message: 'Sample not found' });
         }
     } catch (error) {
         console.error('Error fetching sample details:', error);
@@ -170,6 +189,7 @@ exports.getSampleDetails = async (req, res) => {
  */
 exports.getSamplesByShelfAndDivision = async (req, res) => {
     console.log('GET /samples/get-by-shelf-and-division');
+    const user = req.user;
     const { shelf, division } = req.query;
 
     const numericShelf = parseInt(shelf);
@@ -179,8 +199,15 @@ exports.getSamplesByShelfAndDivision = async (req, res) => {
         return res.status(400).json({ success: false, message: 'Invalid shelf or division provided. Must be numbers.' });
     }
 
+    const { success, team, buyersList, message } = await getUserTeam(user);
+
+    if (!success) {
+        return res.json({ success: false, message });
+    }
+
     try {
-        const query = { shelf: numericShelf, division: numericDivision };
+        const query = { shelf: numericShelf, division: numericDivision, buyer: { $in: buyersList } };
+
         const result = await samplesCollection.find(query).toArray();
 
         res.status(200).json({
@@ -200,8 +227,14 @@ exports.getSamplesByShelfAndDivision = async (req, res) => {
  */
 exports.getTakenSamples = async (req, res) => {
     console.log('GET /taken-samples');
+    const user = req.user;
+    const { success, team, buyersList, message } = await getUserTeam(user);
+
+    if (!success) {
+        return res.json({ success: false, message });
+    }
     try {
-        const query = { availability: "no" };
+        const query = { availability: "no", buyer: { $in: buyersList } };
         const result = await samplesCollection.find(query).toArray();
         res.status(200).json({
             success: true,
@@ -464,7 +497,7 @@ exports.updateSampleById = async (req, res) => {
         const { sample: existingSample, collectionSource } = await findSampleInCollections(objectId);
 
         if (!existingSample) {
-            return res.status(404).json({ success: false, message: 'Sample not found in either active or taken samples.' });
+            return res.json({ success: false, message: 'Sample not found in either active or taken samples.' });
         }
 
         const targetCollection = collectionSource === 'samplesCollection' ? samplesCollection : takenSamplesCollection;
@@ -509,11 +542,120 @@ exports.updateSampleById = async (req, res) => {
  * Marks a sample as taken in the active collection.
  * Route: PUT /api/samples/:id/take
  */
+// exports.takeSample = async (req, res) => {
+//     console.log('PUT /samples/:id/take');
+//     const user = req.user;
+//     const sampleId = req.params.id;
+//     const { taken_by, purpose, taken_at } = req.body;
+
+//     if (!taken_by || !purpose) {
+//         return res.status(400).json({
+//             success: false,
+//             message: "Missing 'taken_by' or 'purpose' in request body."
+//         });
+//     }
+
+//     try {
+//         let filter = {};
+//         if (ObjectId.isValid(sampleId)) {
+//             filter._id = new ObjectId(sampleId);
+//         } else {
+//             filter._id = sampleId; // fallback if _id is string
+//         }
+
+//         // Find the sample
+//         const sample = await samplesCollection.findOne(filter);
+
+//         if (!sample) {
+//             return res.json({
+//                 success: false,
+//                 message: "Sample not found."
+//             });
+//         }
+
+//         // check eligibility of the user to take the sample - check assigned buyers and match with sample enlisted buyer name
+//         const { _id, username, role, team, email } = user;
+//         const query = { team_name: team };
+//         const teamDetails = await teamsCollection.findOne(query);
+
+//         if (!teamDetails || !Array.isArray(teamDetails.buyers)) {
+//             return res.json({
+//                 success: false,
+//                 message: "Team details not found or invalid."
+//             });
+//         }
+
+//         // If sample.buyer is not in the team’s buyers array, deny
+//         if (!teamDetails.buyers.includes(sample.buyer)) {
+//             return res.json({
+//                 success: false,
+//                 message: `You are not eligible to take this sample. The buyer: ${sample?.buyer} is not assigned to you`
+//             });
+//         }
+//         const timestamp = new Date();
+//         const logEntry = { taken_by, purpose, taken_at: timestamp };
+
+//         // Update the sample in place
+//         const updateResult = await samplesCollection.updateOne(
+//             filter,
+//             {
+//                 $set: {
+//                     last_taken_by: taken_by,
+//                     last_purpose: purpose,
+//                     last_taken_at: timestamp,
+//                     availability: "no"
+//                 },
+//                 $push: {
+//                     taken_logs: logEntry
+//                 }
+//             }
+//         );
+
+//         if (updateResult.modifiedCount === 0) {
+//             return res.status(500).json({
+//                 success: false,
+//                 message: "Failed to update sample."
+//             });
+//         }
+
+//         // Reposition samples below the current one
+//         await samplesCollection.updateMany(
+//             {
+//                 shelf: sample.shelf,
+//                 division: sample.division,
+//                 team: sample.team,
+//                 availability: "yes",
+//                 position: { $gt: sample.position }
+//             },
+//             { $inc: { position: -1 } }
+//         );
+
+//         // Optionally, log activity
+//         await logActivity(`${taken_by} took ${sampleId} for ${purpose}`);
+
+//         return res.status(200).json({
+//             success: true,
+//             message: `Sample ${sample.style} (${sample.category}) marked as taken by ${taken_by}.`,
+//             taken_by,
+//             taken_at: timestamp,
+//             purpose
+//         });
+
+//     } catch (err) {
+//         console.error("Error in takeSample:", err);
+//         return res.status(500).json({
+//             success: false,
+//             message: "Server error occurred while taking sample."
+//         });
+//     }
+// };
+
 exports.takeSample = async (req, res) => {
-    console.log('PUT /samples/:id/take');
+    console.log("PUT /samples/:id/take");
+
     const user = req.user;
     const sampleId = req.params.id;
-    const { taken_by, purpose, taken_at } = req.body;
+    const { taken_by, purpose } = req.body;
 
     if (!taken_by || !purpose) {
         return res.status(400).json({
@@ -523,46 +665,34 @@ exports.takeSample = async (req, res) => {
     }
 
     try {
-        let filter = {};
-        if (ObjectId.isValid(sampleId)) {
-            filter._id = new ObjectId(sampleId);
-        } else {
-            filter._id = sampleId; // fallback if _id is string
-        }
+        // Prepare filter
+        const filter = ObjectId.isValid(sampleId)
+            ? { _id: new ObjectId(sampleId) }
+            : { _id: sampleId };
 
         // Find the sample
         const sample = await samplesCollection.findOne(filter);
 
         if (!sample) {
-            return res.status(404).json({
+            return res.json({
                 success: false,
                 message: "Sample not found."
             });
         }
 
-        // check eligibility of the user to take the sample - check assigned buyers and match with sample enlisted buyer name
-        const { _id, username, role, team, email } = user;
-        const query = { team_name: team };
-        const teamDetails = await teamsCollection.findOne(query);
-
-        if (!teamDetails || !Array.isArray(teamDetails.buyers)) {
-            return res.json({
+        // ✅ Reusable eligibility check
+        const eligibility = await checkTeamEligibility(user, sample.buyer);
+        if (!eligibility.eligible) {
+            return res.status(403).json({
                 success: false,
-                message: "Team details not found or invalid."
+                message: eligibility.message
             });
         }
 
-        // If sample.buyer is not in the team’s buyers array, deny
-        if (!teamDetails.buyers.includes(sample.buyer)) {
-            return res.json({
-                success: false,
-                message: `You are not eligible to take this sample.`
-            });
-        }
         const timestamp = new Date();
         const logEntry = { taken_by, purpose, taken_at: timestamp };
 
-        // Update the sample in place
+        // Update the sample
         const updateResult = await samplesCollection.updateOne(
             filter,
             {
@@ -572,9 +702,7 @@ exports.takeSample = async (req, res) => {
                     last_taken_at: timestamp,
                     availability: "no"
                 },
-                $push: {
-                    taken_logs: logEntry
-                }
+                $push: { taken_logs: logEntry }
             }
         );
 
@@ -585,7 +713,7 @@ exports.takeSample = async (req, res) => {
             });
         }
 
-        // Reposition samples below the current one
+        // Reposition other samples
         await samplesCollection.updateMany(
             {
                 shelf: sample.shelf,
@@ -597,7 +725,7 @@ exports.takeSample = async (req, res) => {
             { $inc: { position: -1 } }
         );
 
-        // Optionally, log activity
+        // Log activity
         await logActivity(`${taken_by} took ${sampleId} for ${purpose}`);
 
         return res.status(200).json({
@@ -616,7 +744,6 @@ exports.takeSample = async (req, res) => {
         });
     }
 };
-
 
 
 /**
@@ -643,7 +770,7 @@ exports.putBackSample = async (req, res) => {
         // Step 1: Find the sample in takenSamplesCollection using its current _id
         const sample = await samplesCollection.findOne({ _id: convertedId });
         if (!sample) {
-            return res.status(404).json({ success: false, message: "Sample not found in taken samples collection." });
+            return res.json({ success: false, message: "Sample not found in taken samples collection." });
         }
 
         // Reposition samples below the current one
@@ -724,7 +851,7 @@ exports.restoreSample = async (req, res) => {
         const deletedSample = await deletedSamplesCollection.findOne({ _id: objectId });
 
         if (!deletedSample) {
-            return res.status(404).json({ success: false, message: 'Deleted sample not found in recycle bin.' });
+            return res.json({ success: false, message: 'Deleted sample not found in recycle bin.' });
         }
 
         // Check if the target position is available before restoring
@@ -1043,7 +1170,7 @@ exports.deleteSample = async (req, res) => {
         const { sample, collectionSource } = await findSampleInCollections(objectId);
         console.log("sample", sample);
         if (!sample) {
-            return res.status(404).json({ success: false, message: 'Sorry, Sample not found in either active or taken samples.' });
+            return res.json({ success: false, message: 'Sorry, Sample not found in either active or taken samples.' });
         }
 
         // --- Position Reduction Logic (only if from active collection and requested) ---
@@ -1106,7 +1233,7 @@ exports.deleteSample = async (req, res) => {
 
         if (deleteResult.deletedCount === 0) {
             // This case implies sample was removed by another process right before deleteOne.
-            return res.status(404).json({ success: false, message: 'Sample not found for final removal from source collection (might have been deleted concurrently).' });
+            return res.json({ success: false, message: 'Sample not found for final removal from source collection (might have been deleted concurrently).' });
         }
         res.status(200).json({ success: true, message: `Sample ${id} deleted and moved to recycle bin` });
 
@@ -1136,14 +1263,14 @@ exports.deleteSamplePermanently = async (req, res) => {
         const sample = await deletedSamplesCollection.findOne({ _id: objectId });
 
         if (!sample) {
-            return res.status(404).json({ success: false, message: 'Sorry, Sample not found in the recycle bin.' });
+            return res.json({ success: false, message: 'Sorry, Sample not found in the recycle bin.' });
         }
 
         const deleteResult = await deletedSamplesCollection.deleteOne({ _id: objectId });
 
         if (deleteResult.deletedCount === 0) {
             // This case implies sample was removed by another process right before deleteOne.
-            return res.status(404).json({ success: false, message: 'Sample not found for permanent deletion (might have been deleted concurrently).' });
+            return res.json({ success: false, message: 'Sample not found for permanent deletion (might have been deleted concurrently).' });
         }
 
         res.status(200).json({ success: true, message: `Sample ${id} permanently deleted from recycle bin.` });
@@ -1160,7 +1287,7 @@ exports.deleteAllSamplePermanently = async (req, res) => {
         const result = await deletedSamplesCollection.deleteMany();
 
         if (result.deletedCount === 0) {
-            return res.status(404).json({
+            return res.json({
                 success: false,
                 message: 'No deleted samples found to permanently remove.',
             });
@@ -1178,55 +1305,6 @@ exports.deleteAllSamplePermanently = async (req, res) => {
         });
     }
 }
-
-// old controller was only specific for samples collection. deprecated by mahadi
-// exports.addSampleIdsToExistingDocuments = async (req, res) => {
-//     console.log("addSampleIdsToExistingDocuments");
-//     try {
-
-//         // Fetch all documents from the collection
-//         // We'll sort them by _id to ensure a consistent order if the script is re-run,
-//         // although for initial assignment, any consistent order works.
-//         const existingSamplesCursor = samplesCollection.find({ sample_id: { $exists: false } }).sort({ _id: 1 });
-
-//         let count = 0;
-//         let bulkOps = []; // Use bulk operations for efficiency
-
-//         while (await existingSamplesCursor.hasNext()) {
-//             const doc = await existingSamplesCursor.next();
-//             count++;
-//             // Generate the unique sample_id based on the current count
-//             const uniqueSampleId = `sample${count.toString().padStart(4, '0')}`;
-
-//             // Add an update operation to the bulkOps array
-//             bulkOps.push({
-//                 updateOne: {
-//                     filter: { _id: doc._id },
-//                     update: { $set: { sample_id: uniqueSampleId } }
-//                 }
-//             });
-
-//             // Execute bulk operations in batches to avoid overwhelming the database
-//             if (bulkOps.length === 500) { // Process in batches of 500 documents
-//                 const result = await samplesCollection.bulkWrite(bulkOps);
-//                 console.log(`Executed bulk write for ${bulkOps.length} documents. Updated: ${result.modifiedCount}`);
-//                 bulkOps = []; // Reset bulkOps array
-//             }
-//         }
-
-//         // Execute any remaining bulk operations
-//         if (bulkOps.length > 0) {
-//             const result = await samplesCollection.bulkWrite(bulkOps);
-//             console.log(`Executed final bulk write for ${bulkOps.length} documents. Updated: ${result.modifiedCount}`);
-//         }
-
-//         console.log(`Migration complete! Added 'sample_id' to ${count} existing documents.`);
-//         res.json({ success: true, message: `Migration complete! Added 'sample_id' to ${count} existing documents.` })
-
-//     } catch (error) {
-//         console.error("Error during migration:", error);
-//     }
-// }
 
 exports.addSampleIdsToExistingDocuments = async (req, res) => {
     console.log("Starting addSampleIdsToExistingDocuments...");
@@ -1376,5 +1454,51 @@ exports.resetAndReassignSampleIds = async (req, res) => {
     } catch (error) {
         console.error("❌ Error during forced reset:", error);
         res.status(500).json({ success: false, message: "Forced reset failed.", error: error.message });
+    }
+};
+
+
+exports.searchSample = async (req, res) => {
+    try {
+        const user = req.user;
+        const { searchTerm } = req.params;
+
+        let query = {};
+
+        // If searchTerm looks like an ObjectId, try direct _id search
+        if (ObjectId.isValid(searchTerm)) {
+            query = { _id: new ObjectId(searchTerm) };
+        } else {
+            // Search across multiple fields (case-insensitive regex)
+            query = {
+                $or: [
+                    { buyer: { $regex: searchTerm, $options: "i" } },
+                    { season: { $regex: searchTerm, $options: "i" } },
+                    { style: { $regex: searchTerm, $options: "i" } },
+                    { descr: { $regex: searchTerm, $options: "i" } },
+                    { version: { $regex: searchTerm, $options: "i" } },
+                    { fabric: { $regex: searchTerm, $options: "i" } },
+                    { status: { $regex: searchTerm, $options: "i" } },
+                    { item: { $regex: searchTerm, $options: "i" } },
+                    { "PP.pattern_id": { $regex: searchTerm, $options: "i" } },
+                    { "testing.date": { $regex: searchTerm, $options: "i" } },
+                    { "testing.updated_by": { $regex: searchTerm, $options: "i" } },
+                ],
+            };
+        }
+
+        // storing activity
+
+        const results = await samplesCollection.find(query).toArray();
+        console.log('searched sample for', searchTerm, "and got", results.length, 'item');
+        await logActivity(`${user.username} searched sample for- ${searchTerm}, and got ${results.length} item`);
+
+        if (results.length === 0) {
+            return res.json({ success: false, message: "No matching records found" });
+        }
+        res.status(200).json({ success: true, data: results });
+    } catch (error) {
+        console.error("Error in baseFinder:", error);
+        res.status(500).json({ message: "Server error", error: error.message });
     }
 };

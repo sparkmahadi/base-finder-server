@@ -1,5 +1,7 @@
 const { db } = require("../../db");
 const { ObjectId } = require("mongodb");
+const { checkTeamEligibility } = require("../../utils/teamChecker");
+const { checkUserVerification } = require("../../utils/userVerificationChecker");
 
 // Collection References
 const stylesCollection = db.collection("styles");
@@ -31,7 +33,16 @@ exports.createStyle = async (req, res) => {
 
 // READ - get all teams
 exports.getAllStyles = async (req, res) => {
-  console.log('get all teams');
+  console.log('get all styles');
+  const user = req.user;
+
+      const verification = await checkUserVerification(user);
+      if (!verification.eligible) {
+          return res.status(403).json({
+              success: false,
+              message: verification.message
+          });
+      }
   try {
     const styles = await stylesCollection.find().toArray();
     res.status(200).json({ success: true, data: styles });

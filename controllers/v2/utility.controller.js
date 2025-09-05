@@ -1,5 +1,6 @@
 const { db } = require("../../db");
 const { ObjectId } = require("mongodb");
+const { getUserTeam } = require("../../utils/teamUtils");
 // const normalizeFieldsToNumbers = require("../../utils/nomalizeFieldsToNumbers");
 
 const sampleCategoriesCollection = db.collection("sample-categories");
@@ -10,8 +11,13 @@ const utilitiesCollection = db.collection("utilities");
 // Get all SampleCategories
 module.exports.getSampleCategories = async (req, res) => {
   console.log('GET /SampleCategories');
+  const user = req.user;
+  const { success, team, buyersList, message } = await getUserTeam(user);
+  if (!success) {
+    return res.status(404).json({ success: false, message });
+  }
   try {
-    const result = await sampleCategoriesCollection.find().toArray();
+    const result = await sampleCategoriesCollection.find({user_team: team.team_name}).toArray();
     res.status(200).json({
       success: true,
       message: `${result.length} Sample Categories found`,
@@ -41,7 +47,7 @@ module.exports.deleteCategory = async (req, res) => {
 
 module.exports.postCategory = async (req, res) => {
   console.log('hit post category with data', req.body);
-  const { cat_name, status, createdBy } = req.body;
+  const { cat_name, status, createdBy, user_team } = req.body;
   const totalSamples = req.body.totalSamples || 0;
   console.log(cat_name, status, totalSamples, createdBy);
 
@@ -58,7 +64,7 @@ module.exports.postCategory = async (req, res) => {
   try {
     // Check for existing category with same cat_name and buyer_name
     const existingCategory = await sampleCategoriesCollection.findOne({
-      cat_name: cat_name.trim()
+      cat_name: cat_name.trim(), user_team
     });
     if (existingCategory) {
       return res.send({
@@ -69,7 +75,7 @@ module.exports.postCategory = async (req, res) => {
     }
 
     // If no duplicate, insert new category
-    const newCategory = { cat_name, status, totalSamples, createdBy, createdAt: new Date() };
+    const newCategory = { cat_name, user_team, createdBy, createdAt: new Date() };
     const result = await sampleCategoriesCollection.insertOne(newCategory);
     console.log(result);
     if (result.acknowledged) {
@@ -89,6 +95,10 @@ module.exports.postCategory = async (req, res) => {
 // Controller for creating a new Buyer
 module.exports.postBuyer = async (req, res) => {
   console.log("post buyer");
+  const user = req.user;
+  if(user.role !== "admin"){
+    return res.json({success: false, message: "Sorry, You're not eligible to add buyer"})
+  }
   const { value, createdBy } = req.body; // Destructure 'createdBy' from req.body
   console.log(value, createdBy);
   if (!value || value.trim() === '') {
@@ -329,6 +339,7 @@ module.exports.postDivision = async (req, res) => {
 
 // Controller to get all Buyers
 module.exports.getBuyers = async (req, res) => {
+  const user = req.user;
   const userId = req.user?._id || req.user?.id;
   const userRole = req.user?.role;
   console.log('get buyers by user', userId, 'role', userRole);
@@ -338,7 +349,7 @@ module.exports.getBuyers = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Unauthorized: User not found in request' });
     }
 
-    if (userRole === 'admin') {
+    if (userRole === 'superuser') {
       // Admin: return all buyers
       const buyers = await utilitiesCollection.find({ utility_type: 'buyer' }).toArray();
 
@@ -357,10 +368,16 @@ module.exports.getBuyers = async (req, res) => {
       }
     }
 
+
+
     // Non-admin: find the team that the user belongs to
-    const team = await teamsCollection.findOne({
-      'members.user_id': userId  // no ObjectId conversion assuming stored as string
-    });
+
+    const { success, team, buyersList, message } = await getUserTeam(user);
+
+    if (!success) {
+      return res.status(404).json({ success: false, message });
+    }
+
 
     if (!team || !team.buyers || team.buyers.length === 0) {
       return res.status(404).json({

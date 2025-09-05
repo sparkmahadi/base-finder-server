@@ -5,14 +5,14 @@ const samplesController = require('../../controllers/v2/samples.controller');
 const utilityController = require('../../controllers/v2/utility.controller');
 
 // Public routes
-router.route('/categories').get(utilityController.getSampleCategories)
-    .post(utilityController.postCategory);
+router.route('/categories').get(protect, utilityController.getSampleCategories)
+    .post(protect, utilityController.postCategory);
 
-router.route("/buyers").post(utilityController.postBuyer);
-router.route("/statuses").post(utilityController.postStatus);
-router.route("/shelfs").post(utilityController.postShelf);
-router.route("/divisions").post(utilityController.postDivision);
-router.route("/seasons").post(utilityController.postSeason);
+router.route("/buyers").post(protect, utilityController.postBuyer);
+router.route("/statuses").post(protect, utilityController.postStatus);
+router.route("/shelfs").post(protect, utilityController.postShelf);
+router.route("/divisions").post(protect, utilityController.postDivision);
+router.route("/seasons").post(protect, utilityController.postSeason);
 
 router.get('/buyers', protect, utilityController.getBuyers);
 router.get('/statuses', utilityController.getStatuses);

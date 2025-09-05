@@ -19,8 +19,8 @@ router.patch('/reset-and-reassign-unique-ids-to-existing-samples', samplesContro
 // Utility and Query Routes (more specific than /:id)
 router.get('/unique', samplesController.getUniqueFieldValues); // Get unique values for specified fields (e.g., categories, buyers)
 router.get('/check-position-availability', samplesController.checkPositionAvailability); // Check if a position is available
-router.get('/get-by-shelf-and-division', samplesController.getSamplesByShelfAndDivision); // Get samples based on shelf and division
-router.get('/taken-samples', samplesController.getTakenSamples); // Get samples currently marked as 'taken'
+router.get('/get-by-shelf-and-division', protect, samplesController.getSamplesByShelfAndDivision); // Get samples based on shelf and division
+router.get('/taken-samples', protect, samplesController.getTakenSamples); // Get samples currently marked as 'taken'
 router.get('/buyers', samplesController.getBuyers); // Get a list of buyers
 
 // Deleted Samples and Restore (Public as per original file, consider if restore should be protected)
@@ -42,10 +42,13 @@ router.route('/')
   .get(protect, samplesController.getAllSamples) // Get all samples
   .post(protect, samplesController.postSample); // Create a new sample
 
+router.route("/search/:searchTerm").get(protect, samplesController.searchSample);
+
+
 // 3. **Dynamic Routes (Least Specific)**
 router.route('/:id')
-  .get(samplesController.getSampleDetails) // Get details for a specific sample
-  .put(samplesController.updateSampleById); // Update a specific sample by ID
+  .get(protect, samplesController.getSampleDetails) // Get details for a specific sample
+  .put(protect, samplesController.updateSampleById); // Update a specific sample by ID
 
 // --- Protected Routes (Require Authentication) ---
 router.delete('/permanent-delete/:id', protect, samplesController.deleteSamplePermanently); // Permanently delete a sample
@@ -54,5 +57,6 @@ router.delete(
   '/permanent-delete-all', protect, samplesController.deleteAllSamplePermanently
 );
 router.delete('/:id', protect, samplesController.deleteSample); // Soft delete a sample (move to recycle bin)
+
 
 module.exports = router;
