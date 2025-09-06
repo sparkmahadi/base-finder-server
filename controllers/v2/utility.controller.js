@@ -10,14 +10,20 @@ const utilitiesCollection = db.collection("utilities");
 
 // Get all SampleCategories
 module.exports.getSampleCategories = async (req, res) => {
-  console.log('GET /SampleCategories');
   const user = req.user;
   const { success, team, buyersList, message } = await getUserTeam(user);
+  console.log(`GET /SampleCategories by ${user.username} from team ${team.team_name}`);
   if (!success) {
     return res.status(404).json({ success: false, message });
   }
+
+  if (!team) {
+    return res.json({ success: false, message: "Your team is not found" })
+  }
+
   try {
-    const result = await sampleCategoriesCollection.find({user_team: team.team_name}).toArray();
+    const result = await sampleCategoriesCollection.find({ user_team: team.team_name }).toArray();
+    // console.log(result);
     res.status(200).json({
       success: true,
       message: `${result.length} Sample Categories found`,
@@ -47,24 +53,27 @@ module.exports.deleteCategory = async (req, res) => {
 
 module.exports.postCategory = async (req, res) => {
   console.log('hit post category with data', req.body);
-  const { cat_name, status, createdBy, user_team } = req.body;
-  const totalSamples = req.body.totalSamples || 0;
-  console.log(cat_name, status, totalSamples, createdBy);
+  const { value, createdBy } = req.body;
+  const user = req.user;
+  console.log(value, createdBy);
 
-  if (!cat_name || !createdBy) {
+  if (!value || !createdBy) {
     console.log('entered error');
     return res.status(400).json({ success: false, message: 'Missing required fields' });
   }
 
-  if (!Number.isInteger(totalSamples) || totalSamples < 0) {
-    return res.status(400).json({ success: false, message: 'Invalid totalSamples value' });
+  const { success, team, buyersList, message } = await getUserTeam(user);
+
+  if (!success) {
+    return res.status(404).json({ success: false, message });
   }
 
+  const user_team = team.team_name;
 
   try {
     // Check for existing category with same cat_name and buyer_name
     const existingCategory = await sampleCategoriesCollection.findOne({
-      cat_name: cat_name.trim(), user_team
+      value: value.trim(), user_team
     });
     if (existingCategory) {
       return res.send({
@@ -75,7 +84,7 @@ module.exports.postCategory = async (req, res) => {
     }
 
     // If no duplicate, insert new category
-    const newCategory = { cat_name, user_team, createdBy, createdAt: new Date() };
+    const newCategory = { value, user_team, utility_type: 'category', createdBy, createdAt: new Date() };
     const result = await sampleCategoriesCollection.insertOne(newCategory);
     console.log(result);
     if (result.acknowledged) {
@@ -96,8 +105,8 @@ module.exports.postCategory = async (req, res) => {
 module.exports.postBuyer = async (req, res) => {
   console.log("post buyer");
   const user = req.user;
-  if(user.role !== "admin"){
-    return res.json({success: false, message: "Sorry, You're not eligible to add buyer"})
+  if (user.role !== "admin") {
+    return res.json({ success: false, message: "Sorry, You're not eligible to add buyer" })
   }
   const { value, createdBy } = req.body; // Destructure 'createdBy' from req.body
   console.log(value, createdBy);
