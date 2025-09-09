@@ -10,14 +10,14 @@ const utilitiesCollection = db.collection("utilities");
 
 // Get all SampleCategories
 module.exports.getSampleCategories = async (req, res) => {
-  console.log('GET /SampleCategories');
   const user = req.user;
   const { success, team, buyersList, message } = await getUserTeam(user);
   if (!success) {
     return res.status(404).json({ success: false, message });
   }
+  console.log('GET /SampleCategories by', user.username, 'team', team.team_name);
   try {
-    const result = await sampleCategoriesCollection.find({user_team: team.team_name}).toArray();
+    const result = await sampleCategoriesCollection.find({ user_team: team.team_name }).toArray();
     res.status(200).json({
       success: true,
       message: `${result.length} Sample Categories found`,
@@ -47,24 +47,27 @@ module.exports.deleteCategory = async (req, res) => {
 
 module.exports.postCategory = async (req, res) => {
   console.log('hit post category with data', req.body);
-  const { cat_name, status, createdBy, user_team } = req.body;
-  const totalSamples = req.body.totalSamples || 0;
-  console.log(cat_name, status, totalSamples, createdBy);
+  const { value, createdBy } = req.body;
+  console.log(value, createdBy);
 
-  if (!cat_name || !createdBy) {
+  if (!value || !createdBy) {
     console.log('entered error');
     return res.status(400).json({ success: false, message: 'Missing required fields' });
   }
 
-  if (!Number.isInteger(totalSamples) || totalSamples < 0) {
-    return res.status(400).json({ success: false, message: 'Invalid totalSamples value' });
+  const user = req.user;
+  const { success, team, buyersList, message } = await getUserTeam(user);
+  if (!success) {
+    return res.status(404).json({ success: false, message });
   }
+
+  const user_team = team.team_name;
 
 
   try {
-    // Check for existing category with same cat_name and buyer_name
+    // Check for existing category with same value and buyer_name
     const existingCategory = await sampleCategoriesCollection.findOne({
-      cat_name: cat_name.trim(), user_team
+      value: value.trim(), user_team
     });
     if (existingCategory) {
       return res.send({
@@ -75,7 +78,7 @@ module.exports.postCategory = async (req, res) => {
     }
 
     // If no duplicate, insert new category
-    const newCategory = { cat_name, user_team, createdBy, createdAt: new Date() };
+    const newCategory = { value, user_team, createdBy, createdAt: new Date() };
     const result = await sampleCategoriesCollection.insertOne(newCategory);
     console.log(result);
     if (result.acknowledged) {
@@ -96,8 +99,8 @@ module.exports.postCategory = async (req, res) => {
 module.exports.postBuyer = async (req, res) => {
   console.log("post buyer");
   const user = req.user;
-  if(user.role !== "admin"){
-    return res.json({success: false, message: "Sorry, You're not eligible to add buyer"})
+  if (user.role !== "admin") {
+    return res.json({ success: false, message: "Sorry, You're not eligible to add buyer" })
   }
   const { value, createdBy } = req.body; // Destructure 'createdBy' from req.body
   console.log(value, createdBy);
@@ -388,9 +391,29 @@ module.exports.getBuyers = async (req, res) => {
     }
 
     // Return buyers filtered by team's buyer list
-    const buyers = await utilitiesCollection
-      .find({ utility_type: 'buyer', value: { $in: team.buyers } })
-      .toArray();
+    // const buyers = await utilitiesCollection
+    //   .find({ utility_type: 'buyer', value: { $in: team.buyers } })
+    //   .toArray();
+
+const buyers = await utilitiesCollection.find({
+  utility_type: "buyer",
+  $or: [
+    {
+      // Case 1: Match team buyers when user_team exists
+      value: { $in: team.buyers }
+    },
+    {
+      // Case 2: Include buyers with no user_team or null user_team
+      $or: [
+        { user_team: null },
+        { user_team: { $exists: false } }
+      ]
+    }
+  ]
+}).toArray();
+
+
+    console.log("buyers", buyers)
 
 
     if (buyers.length > 0) {
@@ -462,6 +485,7 @@ module.exports.getShelves = async (req, res) => {
 
 // Controller to get all Divisions
 module.exports.getDivisions = async (req, res) => {
+  console.log("hit get divisions")
   try {
     const divisions = await utilitiesCollection.find({ utility_type: 'division' }).toArray();
     if (divisions.length > 0) {
@@ -471,7 +495,7 @@ module.exports.getDivisions = async (req, res) => {
         data: divisions,
       });
     } else {
-      return res.status(404).json({
+      return res.json({
         success: false,
         message: 'No divisions found.',
         data: [],
@@ -488,9 +512,9 @@ module.exports.getDivisions = async (req, res) => {
 // Controller to update an existing Category
 module.exports.updateCategory = async (req, res) => {
   console.log('update category');
-  const { _id, cat_name, status, totalSamples, createdBy } = req.body;
+  const { _id, value, status, totalSamples, createdBy } = req.body;
 
-  if (!_id || !cat_name || !status || totalSamples === undefined || !createdBy) {
+  if (!_id || !value || !status || totalSamples === undefined || !createdBy) {
     return res.status(400).json({ success: false, message: 'Missing required fields for update' });
   }
 
@@ -501,7 +525,7 @@ module.exports.updateCategory = async (req, res) => {
       { _id: objectId },
       {
         $set: {
-          cat_name: cat_name.trim(),
+          value: value.trim(),
           status: status.trim(),
           totalSamples: Number(totalSamples),
           createdBy: createdBy.trim(),
