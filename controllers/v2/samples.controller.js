@@ -133,7 +133,7 @@ exports.getSampleDetails = async (req, res) => {
     // ✅ Reusable check
     const verification = await checkUserVerification(user);
     if (!verification.eligible) {
-        return res.status(403).json({
+        return res.json({
             success: false,
             message: verification.message
         });
