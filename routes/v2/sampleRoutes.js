@@ -43,6 +43,7 @@ router.route('/')
   .post(protect, samplesController.postSample); // Create a new sample
 
 router.patch('/add-team-to-empty-samples', samplesController.addTeamToEmptySamples)
+router.patch('/add-field-to-empty-samples', samplesController.addFieldToEmptySamples)
 
 router.route("/search/:searchTerm").get(protect, samplesController.searchSample);
 

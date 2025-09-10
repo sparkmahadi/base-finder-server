@@ -1542,3 +1542,37 @@ exports.addTeamToEmptySamples = async (req, res) => {
         res.status(500).json({ message: "Server error", error });
     }
 }
+
+exports.addFieldToEmptySamples = async (req, res) => {
+    try {
+        const fieldData = req.body;
+        const {field_name, field_value} = fieldData;
+        console.log(field_name, field_value)
+        if (!field_name) {
+            return res.status(400).json({ message: "field_name is required" });
+        }
+        if (!field_value) {
+            return res.status(400).json({ message: "field_value is required" });
+        }
+
+        const result = await samplesCollection.updateMany(
+            {
+                $or: [
+                    { [field_name]: { $exists: false } },
+                    { [field_name]: "" },
+                    { [field_name]: null }
+                ]
+            },
+            { $set: { [field_name]: field_value } }
+        );
+
+        res.json({
+            message: `Field name ${field_name} : ${field_value} added successfully to ${result.modifiedCount} documents`,
+            matchedCount: result.matchedCount,
+            modifiedCount: result.modifiedCount
+        });
+    } catch (error) {
+        console.error("Error updating team:", error);
+        res.status(500).json({ message: "Server error", error });
+    }
+}
