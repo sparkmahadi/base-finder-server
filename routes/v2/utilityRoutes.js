@@ -13,11 +13,14 @@ router.route("/statuses").post(protect, utilityController.postStatus);
 router.route("/shelfs").post(protect, utilityController.postShelf);
 router.route("/divisions").post(protect, utilityController.postDivision);
 router.route("/seasons").post(protect, utilityController.postSeason);
+router.route("/fabrications").post(protect, utilityController.postFabrication);
 
 router.get('/buyers', protect, utilityController.getBuyers);
 router.get('/statuses', utilityController.getStatuses);
 router.get('/shelfs', utilityController.getShelves);
 router.get('/divisions', utilityController.getDivisions);
+router.get('/seasons', protect,utilityController.getSeasons);
+router.get('/fabrications', protect,utilityController.getFabrications);
 
 // UPDATE routes
 router.put('/categories', utilityController.updateCategory);
