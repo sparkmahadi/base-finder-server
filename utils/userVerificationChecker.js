@@ -1,3 +1,7 @@
+const { ObjectId } = require("mongodb");
+const { db } = require("../db");
+
+const usersCollection = db.collection("users");
 /**
  * Checks if a user is verified and approved.
  * @param {Object} user - The user object from req.user
@@ -8,8 +12,10 @@ async function checkUserVerification(user) {
         if (!user) {
             return { eligible: false, message: "User information missing." };
         }
+        const userInfoFromDB = await usersCollection.findOne({_id: new ObjectId(user._id)});
 
-        const { verification, approval, role } = user;
+        const { verification, approval, role } = userInfoFromDB;
+        // console.log(userInfoFromDB)
 
         // Optionally, allow admin to bypass
         if (role === "admin") {
