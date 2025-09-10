@@ -1524,12 +1524,12 @@ exports.addTeamToEmptySamples = async (req, res) => {
         const result = await samplesCollection.updateMany(
             {
                 $or: [
-                    { user_team: { $exists: false } },
-                    { user_team: "" },
-                    { user_team: null }
+                    { team: { $exists: false } },
+                    { team: "" },
+                    { team: null }
                 ]
             },
-            { $set: { user_team: teamName } }
+            { $set: { team: teamName } }
         );
 
         res.json({
