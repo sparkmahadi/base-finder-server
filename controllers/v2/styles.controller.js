@@ -9,14 +9,15 @@ const teamsCollection = db.collection("teams");
 
 // CREATE - add a new team
 exports.createStyle = async (req, res) => {
+  const user = req.user;
+  if (!user) {
+    return res.send("User data not found")
+  }
   try {
     const formData = req.body;
-
-    // if (!team_name || !Array.isArray(buyers) || !Array.isArray(members)) {
-    //   return res.status(400).json({ success: false, message: 'Invalid input' });
-    // }
-
     const newStyle = formData;
+    newStyle.added_at = new Date();
+    newStyle.added_by = user?.username;
 
     const result = await stylesCollection.insertOne(newStyle);
 
@@ -36,13 +37,13 @@ exports.getAllStyles = async (req, res) => {
   console.log('get all styles');
   const user = req.user;
 
-      const verification = await checkUserVerification(user);
-      if (!verification.eligible) {
-          return res.status(403).json({
-              success: false,
-              message: verification.message
-          });
-      }
+  const verification = await checkUserVerification(user);
+  if (!verification.eligible) {
+    return res.status(403).json({
+      success: false,
+      message: verification.message
+    });
+  }
   try {
     const styles = await stylesCollection.find().toArray();
     res.status(200).json({ success: true, data: styles });
@@ -94,6 +95,7 @@ exports.getStyleById = async (req, res) => {
 
 exports.updateBasicStyle = async (req, res) => {
   console.log('Received data for update:', req.body);
+  const user = req.user;
   try {
     const styleId = req.params.id;
     const { sampling, prod, ...otherFields } = req.body;
@@ -108,6 +110,12 @@ exports.updateBasicStyle = async (req, res) => {
 
     const updateOperations = {};
 
+    // Add global tracking fields
+    const infoTracking = {
+      info_updated_by: user?.username || "",
+      info_update_at: req.body.updated_at || new Date().toISOString(),
+    };
+
     // 2. Logic for updating other basic fields using $set
     const fieldsToSet = {};
     const allowedFields = ['style', 'buyer', 'season', 'descr', 'version', 'fabric', 'status', 'item', 'similar', 'prints'];
@@ -120,7 +128,7 @@ exports.updateBasicStyle = async (req, res) => {
     }
 
     if (Object.keys(fieldsToSet).length > 0) {
-      updateOperations.$set = fieldsToSet;
+      updateOperations.$set = { ...fieldsToSet, ...infoTracking };
     }
 
     // Check if there is anything to update at all
@@ -162,6 +170,13 @@ exports.updateStyleSampling = async (req, res) => {
     }
 
     let updateQuery;
+
+    // Add global tracking fields
+    const samplingTracking = {
+      sampling_updated_by: req.body.updated_by || req.body.added_by || "",
+      sampling_update_at: req.body.updated_at || req.body.added_at || new Date().toISOString(),
+    };
+
 
     switch (action) {
       case "replaceFields":
@@ -208,7 +223,7 @@ exports.updateStyleSampling = async (req, res) => {
           return res.status(200).json({ success: true, message: "No changes detected." });
         }
 
-        updateQuery = { $set: fieldsWithMeta };
+        updateQuery = { $set: { ...fieldsWithMeta, ...samplingTracking } };
         break;
 
 
@@ -217,7 +232,7 @@ exports.updateStyleSampling = async (req, res) => {
         if (!field) {
           return res.status(400).json({ success: false, message: "Missing field name to delete." });
         }
-        updateQuery = { $unset: { [field]: "" } };
+        updateQuery = { $unset: { [field]: "" }, $set: { ...samplingTracking } };
         break;
 
       case "add":
@@ -237,7 +252,7 @@ exports.updateStyleSampling = async (req, res) => {
           },
         };
 
-        updateQuery = { $set: newSamplingField };
+        updateQuery = { $set: { ...newSamplingField, ...samplingTracking } };
         break;
 
       default:

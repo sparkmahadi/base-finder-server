@@ -18,7 +18,7 @@ router.route("/update-style-production/:id").put(updateStyleByProduction);
 
 // dynamic routes
 router.route("/:id").get(getStyleById)
-    .put(updateBasicStyle)
+    .put(protect, updateBasicStyle)
     .delete(deleteStyle)
 
 
