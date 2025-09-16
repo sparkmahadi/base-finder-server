@@ -11,9 +11,9 @@ const usersCollection = db.collection("users");
 
 // Register Controller
 module.exports.register = async (req, res) => {
-  const { username, name, email, team, password } = req.body;
+  const { username, name, email, password } = req.body;
 
-  if (!username || !name || !email || !password || !team) {
+  if (!username || !name || !email || !password ) {
     return res.status(400).json({ message: "All fields are required" });
   }
 
@@ -30,7 +30,6 @@ module.exports.register = async (req, res) => {
       username,
       name,
       email,
-      team,
       role:"user",
       verification: false,
       approval: false,

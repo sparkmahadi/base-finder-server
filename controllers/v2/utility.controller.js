@@ -402,7 +402,7 @@ module.exports.getBuyers = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Unauthorized: User not found in request' });
     }
 
-    if (userRole === 'superuser') {
+    if (userRole === 'superuser' || "admin") {
       // Admin: return all buyers
       const buyers = await utilitiesCollection.find({ utility_type: 'buyer' }).toArray();
 

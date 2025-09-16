@@ -1,7 +1,7 @@
 const { db } = require("../../db");
 const { ObjectId } = require("mongodb");
-const { checkTeamEligibility } = require("../../utils/teamChecker");
 const { checkUserVerification } = require("../../utils/userVerificationChecker");
+const { getUserTeam } = require("../../utils/teamUtils");
 
 // Collection References
 const stylesCollection = db.collection("styles");
@@ -18,6 +18,7 @@ exports.createStyle = async (req, res) => {
     const newStyle = formData;
     newStyle.added_at = new Date();
     newStyle.added_by = user?.username;
+    newStyle.team = user?.team;
 
     const result = await stylesCollection.insertOne(newStyle);
 
@@ -39,13 +40,22 @@ exports.getAllStyles = async (req, res) => {
 
   const verification = await checkUserVerification(user);
   if (!verification.eligible) {
-    return res.status(403).json({
+    return res.json({
+      data: [],
       success: false,
       message: verification.message
     });
   }
+
+  const { success, team, buyersList, message } = await getUserTeam(user);
+
+  if (!success) {
+    return res.status(404).json({ success: false, message });
+  }
+  const query = {team: team.team_name};
+
   try {
-    const styles = await stylesCollection.find().toArray();
+    const styles = await stylesCollection.find(query).toArray();
     res.status(200).json({ success: true, data: styles });
   } catch (error) {
     console.error('Get all teams error:', error);
