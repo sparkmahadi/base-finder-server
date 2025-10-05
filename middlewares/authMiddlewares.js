@@ -7,8 +7,8 @@ const { db } = require('../db');
 const usersCollection = db.collection('users');
 
 async function protect(req, res, next) {
-  console.log('hit protect');
   const authHeader = req.headers.authorization;
+  console.log('hit protect header', authHeader);
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     console.log('from protection: user not authorized- authHeader-', authHeader);

@@ -18,6 +18,9 @@ router.get('/', authorizeAdmin, userController.getAllUsers);
 router.post('/', authorizeAdmin, userController.createUser);
 
 // PUT update user by ID
+router.put('/update-by-user/:id', userController.updateByUser);
+
+// PUT update user by ID
 router.put('/:id', authorizeAdmin, userController.updateUser);
 
 // DELETE user by ID

@@ -133,7 +133,7 @@ exports.getSampleDetails = async (req, res) => {
     // ✅ Reusable check
     const verification = await checkUserVerification(user);
     if (!verification.eligible) {
-        return res.status(403).json({
+        return res.json({
             success: false,
             message: verification.message
         });
@@ -921,6 +921,11 @@ exports.increasePositionsByShelfAndDivision = async (req, res) => {
     console.log('PATCH /samples/increase-positions-by-shelf-division');
     let { shelf, division, currentPosition } = req.body;
     const user = req.user;
+    const { success, team, buyersList, message } = await getUserTeam(user);
+
+    if (!success) {
+        return res.status(404).json({ success: false, message });
+    }
     console.log(user);
     const numericShelf = Number(shelf);
     const numericDivision = Number(division);
@@ -937,7 +942,7 @@ exports.increasePositionsByShelfAndDivision = async (req, res) => {
         const query = {
             shelf: numericShelf,
             division: numericDivision,
-            team: user.team,
+            team: team.team_name,
             availability: "yes",
             position: { $gte: numericCurrentPosition } // Affects samples at or greater than the given position
         };
@@ -973,6 +978,11 @@ exports.increasePositionsByShelfAndDivision = async (req, res) => {
 exports.decreasePositionsByShelfAndDivision = async (req, res) => {
     console.log('PATCH /samples/decrease-positions-by-shelf-division');
     const user = req.user;
+    const { success, team, buyersList, message } = await getUserTeam(user);
+
+    if (!success) {
+        return res.status(404).json({ success: false, message });
+    }
     let { shelf, division, currentPosition } = req.body;
 
     const numericShelf = Number(shelf);
@@ -990,7 +1000,7 @@ exports.decreasePositionsByShelfAndDivision = async (req, res) => {
         const query = {
             shelf: numericShelf,
             division: numericDivision,
-            team: user.team,
+            team: team.team_name,
             availability: "yes",
             position: { $gt: numericCurrentPosition } // Affects samples strictly greater than the given position
         };
@@ -1502,3 +1512,67 @@ exports.searchSample = async (req, res) => {
         res.status(500).json({ message: "Server error", error: error.message });
     }
 };
+
+exports.addTeamToEmptySamples = async (req, res) => {
+    try {
+        const { teamName } = req.body;
+
+        if (!teamName) {
+            return res.status(400).json({ message: "teamName is required" });
+        }
+
+        const result = await samplesCollection.updateMany(
+            {
+                $or: [
+                    { team: { $exists: false } },
+                    { team: "" },
+                    { team: null }
+                ]
+            },
+            { $set: { team: teamName } }
+        );
+
+        res.json({
+            message: `Team name ${teamName} added successfully to ${result.modifiedCount} documents`,
+            matchedCount: result.matchedCount,
+            modifiedCount: result.modifiedCount
+        });
+    } catch (error) {
+        console.error("Error updating team:", error);
+        res.status(500).json({ message: "Server error", error });
+    }
+}
+
+exports.addFieldToEmptySamples = async (req, res) => {
+    try {
+        const fieldData = req.body;
+        const {field_name, field_value} = fieldData;
+        console.log(field_name, field_value)
+        if (!field_name) {
+            return res.status(400).json({ message: "field_name is required" });
+        }
+        if (!field_value) {
+            return res.status(400).json({ message: "field_value is required" });
+        }
+
+        const result = await samplesCollection.updateMany(
+            {
+                $or: [
+                    { [field_name]: { $exists: false } },
+                    { [field_name]: "" },
+                    { [field_name]: null }
+                ]
+            },
+            { $set: { [field_name]: field_value } }
+        );
+
+        res.json({
+            message: `Field name ${field_name} : ${field_value} added successfully to ${result.modifiedCount} documents`,
+            matchedCount: result.matchedCount,
+            modifiedCount: result.modifiedCount
+        });
+    } catch (error) {
+        console.error("Error updating team:", error);
+        res.status(500).json({ message: "Server error", error });
+    }
+}

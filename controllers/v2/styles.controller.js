@@ -1,7 +1,7 @@
 const { db } = require("../../db");
 const { ObjectId } = require("mongodb");
-const { checkTeamEligibility } = require("../../utils/teamChecker");
 const { checkUserVerification } = require("../../utils/userVerificationChecker");
+const { getUserTeam } = require("../../utils/teamUtils");
 
 // Collection References
 const stylesCollection = db.collection("styles");
@@ -9,14 +9,16 @@ const teamsCollection = db.collection("teams");
 
 // CREATE - add a new team
 exports.createStyle = async (req, res) => {
+  const user = req.user;
+  if (!user) {
+    return res.send("User data not found")
+  }
   try {
     const formData = req.body;
-
-    // if (!team_name || !Array.isArray(buyers) || !Array.isArray(members)) {
-    //   return res.status(400).json({ success: false, message: 'Invalid input' });
-    // }
-
     const newStyle = formData;
+    newStyle.added_at = new Date();
+    newStyle.added_by = user?.username;
+    newStyle.team = user?.team;
 
     const result = await stylesCollection.insertOne(newStyle);
 
@@ -36,15 +38,24 @@ exports.getAllStyles = async (req, res) => {
   console.log('get all styles');
   const user = req.user;
 
-      const verification = await checkUserVerification(user);
-      if (!verification.eligible) {
-          return res.status(403).json({
-              success: false,
-              message: verification.message
-          });
-      }
+  const verification = await checkUserVerification(user);
+  if (!verification.eligible) {
+    return res.json({
+      data: [],
+      success: false,
+      message: verification.message
+    });
+  }
+
+  const { success, team, buyersList, message } = await getUserTeam(user);
+
+  if (!success) {
+    return res.status(404).json({ success: false, message });
+  }
+  const query = {team: team.team_name};
+
   try {
-    const styles = await stylesCollection.find().toArray();
+    const styles = await stylesCollection.find(query).toArray();
     res.status(200).json({ success: true, data: styles });
   } catch (error) {
     console.error('Get all teams error:', error);
@@ -94,6 +105,7 @@ exports.getStyleById = async (req, res) => {
 
 exports.updateBasicStyle = async (req, res) => {
   console.log('Received data for update:', req.body);
+  const user = req.user;
   try {
     const styleId = req.params.id;
     const { sampling, prod, ...otherFields } = req.body;
@@ -108,9 +120,15 @@ exports.updateBasicStyle = async (req, res) => {
 
     const updateOperations = {};
 
+    // Add global tracking fields
+    const infoTracking = {
+      info_updated_by: user?.username || "",
+      info_update_at: req.body.updated_at || new Date().toISOString(),
+    };
+
     // 2. Logic for updating other basic fields using $set
     const fieldsToSet = {};
-    const allowedFields = ['style', 'buyer', 'season', 'descr', 'version', 'fabric', 'status', 'item', 'similar', 'prints'];
+    const allowedFields = ['style', 'buyer', 'season', 'descr', 'version', 'fabric', 'status', 'item', 'similar', 'prints',];
 
     // Iterate over the rest of the body to find fields to update
     for (const key of allowedFields) {
@@ -120,7 +138,7 @@ exports.updateBasicStyle = async (req, res) => {
     }
 
     if (Object.keys(fieldsToSet).length > 0) {
-      updateOperations.$set = fieldsToSet;
+      updateOperations.$set = { ...fieldsToSet, ...infoTracking };
     }
 
     // Check if there is anything to update at all
@@ -162,6 +180,13 @@ exports.updateStyleSampling = async (req, res) => {
     }
 
     let updateQuery;
+
+    // Add global tracking fields
+    const samplingTracking = {
+      sampling_updated_by: req.body.updated_by || req.body.added_by || "",
+      sampling_update_at: req.body.updated_at || req.body.added_at || new Date().toISOString(),
+    };
+
 
     switch (action) {
       case "replaceFields":
@@ -208,7 +233,7 @@ exports.updateStyleSampling = async (req, res) => {
           return res.status(200).json({ success: true, message: "No changes detected." });
         }
 
-        updateQuery = { $set: fieldsWithMeta };
+        updateQuery = { $set: { ...fieldsWithMeta, ...samplingTracking } };
         break;
 
 
@@ -217,7 +242,7 @@ exports.updateStyleSampling = async (req, res) => {
         if (!field) {
           return res.status(400).json({ success: false, message: "Missing field name to delete." });
         }
-        updateQuery = { $unset: { [field]: "" } };
+        updateQuery = { $unset: { [field]: "" }, $set: { ...samplingTracking } };
         break;
 
       case "add":
@@ -237,7 +262,7 @@ exports.updateStyleSampling = async (req, res) => {
           },
         };
 
-        updateQuery = { $set: newSamplingField };
+        updateQuery = { $set: { ...newSamplingField, ...samplingTracking } };
         break;
 
       default:
@@ -281,15 +306,14 @@ exports.updateStyleSampling = async (req, res) => {
  */
 exports.updateStyleByProduction = async (req, res) => {
   console.log("Received production data for update:", req.body);
-
+  const user = req.user;
   try {
     const styleId = req.params.id;
     const { action, ...payload } = req.body;
-    const currentUser = "sparkm"; // In a real app, this would come from an authenticated user session (e.g., req.user.username)
 
     // --- Validate styleId ---
     if (!styleId || !ObjectId.isValid(styleId)) {
-      return res.status(400).json({ success: false, message: "Invalid or missing Style ID." });
+      return res.json({ success: false, message: "Invalid or missing Style ID." });
     }
 
     let updateQuery;
@@ -298,8 +322,8 @@ exports.updateStyleByProduction = async (req, res) => {
     switch (action) {
       case "add": {
         const { factory_name, factory_code, po_size_range, totalQuantity } = payload;
-        if (!factory_name || !totalQuantity) {
-          return res.status(400).json({ success: false, message: "Missing required fields for adding a record." });
+        if (!factory_name) {
+          return res.json({ success: false, message: "Missing required fields for adding a record." });
         }
 
         const newRecord = {
@@ -307,7 +331,7 @@ exports.updateStyleByProduction = async (req, res) => {
           factory_code: factory_code || "",
           po_size_range: po_size_range || "",
           totalQuantity: totalQuantity,
-          added_by: currentUser,
+          added_by: user?.username,
           added_at: new Date().toISOString(),
         };
 
@@ -320,14 +344,14 @@ exports.updateStyleByProduction = async (req, res) => {
       case "edit": {
         const { recordToEdit, updatedData } = payload;
         if (!recordToEdit || !updatedData || !recordToEdit.added_by || !recordToEdit.added_at) {
-          return res.status(400).json({ success: false, message: "Missing required fields for editing a record." });
+          return res.json({ success: false, message: "Missing required fields for editing a record." });
         }
 
         const updatedRecord = {
           ...updatedData,
           added_by: recordToEdit.added_by,
           added_at: recordToEdit.added_at,
-          updated_by: currentUser,
+          updated_by: user?.username,
           updated_at: new Date().toISOString(),
         };
 
@@ -348,7 +372,7 @@ exports.updateStyleByProduction = async (req, res) => {
       case "delete": {
         const { recordToDelete } = payload;
         if (!recordToDelete || !recordToDelete.added_by || !recordToDelete.added_at) {
-          return res.status(400).json({ success: false, message: "Missing required fields for deleting a record." });
+          return res.json({ success: false, message: "Missing required fields for deleting a record." });
         }
 
         // Use $pull to remove a record from the array based on its unique fields
@@ -365,7 +389,7 @@ exports.updateStyleByProduction = async (req, res) => {
       }
 
       default:
-        return res.status(400).json({ success: false, message: "Invalid action specified." });
+        return res.json({ success: false, message: "Invalid action specified." });
     }
 
     // --- Execute the update query ---
@@ -373,10 +397,12 @@ exports.updateStyleByProduction = async (req, res) => {
     const options = req.body.arrayFilters ? { arrayFilters: req.body.arrayFilters } : {};
 
     const result = await stylesCollection.updateOne(filter, updateQuery, options);
+    console.log(result)
 
     if (result.matchedCount === 0) {
-      return res.status(404).json({ success: false, message: "Style not found." });
+      return res.json({ success: false, message: "Style not found." });
     }
+
 
     return res.status(200).json({
       success: true,
@@ -411,5 +437,49 @@ exports.deleteStyle = async (req, res) => {
   } catch (error) {
     console.error('Delete team error:', error);
     res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+
+// Delete a specific field from ALL documents in styles collection
+exports.deleteSpecificFieldInStyles = async (req, res) => {
+  console.log("data for deletion", req.body)
+  try {
+    const { field } = req.body; // field name to delete (e.g., "factory_name")
+    if (!field) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Field name is required" });
+    }
+
+    // Restricted fields that should never be deleted
+    const restrictedFields = ["_id", "added_by", "added_at"];
+    if (restrictedFields.includes(field)) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Restricted field cannot be deleted" });
+    }
+
+    const result = await db.collection("styles").updateMany(
+      {}, // target ALL docs
+      { $unset: { [field]: "" } } // remove the field
+    );
+
+    if (result.modifiedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No documents updated. Field may not exist.",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Field '${field}' deleted successfully from ${result.modifiedCount} documents`,
+    });
+  } catch (error) {
+    console.error("Error deleting field:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Server error", error: error.message });
   }
 };

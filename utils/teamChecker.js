@@ -43,7 +43,7 @@ module.exports = { checkTeamEligibility };
 
 
 // usage example
-// ✅ Reusable eligibility check
+// ✅ Reusable eligibility check to access a buyer
 // const eligibility = await checkTeamEligibility(user, sample.buyer);
 // if (!eligibility.eligible) {
 //   return res.status(403).json({
