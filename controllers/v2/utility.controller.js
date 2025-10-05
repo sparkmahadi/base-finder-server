@@ -61,9 +61,6 @@ module.exports.postCategory = async (req, res) => {
   if (!success) {
     return res.status(404).json({ success: false, message });
   }
-
-  const user_team = team.team_name;
-
   const user_team = team.team_name;
 
   try {
