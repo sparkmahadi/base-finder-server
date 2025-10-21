@@ -483,3 +483,92 @@ exports.deleteSpecificFieldInStyles = async (req, res) => {
       .json({ success: false, message: "Server error", error: error.message });
   }
 };
+
+/**
+ * Bulk update multiple styles with selected fields.
+ * Can update simple string fields, nested objects (PP, FIT), and optionally add production records.
+ */
+exports.bulkUpdateStyles = async (req, res) => {
+  try {
+    const user = req.user;
+    const { styleIds, updateFields, addProductionRecord } = req.body;
+
+    if (!styleIds?.length) {
+      return res.status(400).json({ success: false, message: "No style IDs provided" });
+    }
+
+    const now = new Date();
+    const updates = {};
+    const stringFields = ["buyer", "season", "team", "descr", "item", "fabric", "prints"];
+
+    // ✅ Handle basic string fields
+    stringFields.forEach((field) => {
+      if (updateFields?.[field] !== undefined) updates[field] = updateFields[field];
+    });
+
+    // ✅ Handle dynamic custom keys (like RPP, SECOND_FIT, etc.)
+    for (const [key, value] of Object.entries(updateFields)) {
+      if (!stringFields.includes(key)) {
+        updates[key] = {
+          ...value,
+          updated_at: now,
+          updated_by: user?.username,
+        };
+      }
+    }
+
+    updates.info_update_at = now;
+    updates.info_updated_by = user?.username;
+
+    // ✅ Apply style-level updates
+    const bulkUpdateResult = await stylesCollection.updateMany(
+      { _id: { $in: styleIds.map((id) => new ObjectId(id)) } },
+      { $set: updates }
+    );
+
+    // ✅ Handle productionRecords (add/update/delete)
+    if (addProductionRecord && Array.isArray(addProductionRecord)) {
+      for (const styleId of styleIds) {
+        const styleDoc = await stylesCollection.findOne({ _id: new ObjectId(styleId) });
+
+        const existingRecords = styleDoc.productionRecords || [];
+        const newRecords = addProductionRecord.map((r) => ({
+          ...r,
+          added_by: user?.username,
+          added_at: now.toISOString(),
+        }));
+
+        const existingById = new Map(existingRecords.map((r) => [r._id?.toString(), r]));
+
+        const mergedRecords = newRecords.map((newRec) => {
+          if (newRec._id && existingById.has(newRec._id.toString())) {
+            return { ...existingById.get(newRec._id.toString()), ...newRec, updated_at: now };
+          } else {
+            return { ...newRec, _id: new ObjectId() };
+          }
+        });
+
+        const finalRecords = mergedRecords.filter((r) => !r.isDeleted);
+
+        await stylesCollection.updateOne(
+          { _id: new ObjectId(styleId) },
+          { $set: { productionRecords: finalRecords } }
+        );
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Bulk update completed successfully",
+      modifiedCount: bulkUpdateResult.modifiedCount,
+    });
+  } catch (error) {
+    console.error("Error in bulk updating styles:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
+
